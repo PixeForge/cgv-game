@@ -9,6 +9,8 @@ export class Environment {
     this.player = null;
     this.mixer = null;
     this.roomBounds = null; // THREE.Box3
+    this.corporateBounds = null; // THREE.Box3 for corporate terrain
+    this.allCollidables = []; // all collidables including corporate
     this.init();
   }
 
@@ -31,6 +33,20 @@ export class Environment {
     // your model includes an internal floor.
     // this.createObstacles();
   }
+  //corporate
+  setCorporateBounds(box3) {
+    this.corporateBounds = box;
+  }
+  getCorporateBounds() {
+    return this.corporateBounds;
+  }
+  addCollidables(collidables){
+    this.addCollidables(...collidables);
+  }
+  getAllCollidables() {
+    return this.allCollidables;
+  }
+
 
   addCollidables(collidables = []) {
     // Accept array of THREE.Object3D (meshes)
