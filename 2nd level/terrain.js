@@ -64,7 +64,7 @@ export function train(scene, camera, player, renderer) {
     32, 35, 0.2,
     20, 35/2, 6.5,
     null,
-    "2nd level/Textures/room_floor.webp"
+    "2nd level/Textures/20251015_2213_Blue Solar System Texture_simple_compose_01k7mr2ssafgj912vz5pqzw3kd.png"
   );
   scene.add(wallNearMirror);
 
