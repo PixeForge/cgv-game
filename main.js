@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { PlayerController } from "./js/playerController.js";
 import { LevelManager } from "./js/levelManager.js";
+import { createPauseMenu } from "./js/pauseMenu.js";
 
 class Game {
   constructor() {
@@ -10,6 +11,7 @@ class Game {
     this.renderer = null;
     this.playerController = null;
     this.levelManager = null;
+    this.pauseMenu = null;
 
     this.init();
   }
@@ -46,6 +48,17 @@ class Game {
 
     // Setup UI
     this.setupUI();
+
+    // Initialize pause menu
+    this.pauseMenu = createPauseMenu();
+    
+    // Optional: Stop clock when paused, resume when unpaused
+    this.pauseMenu.onPause(() => {
+      this.clock.stop();
+    });
+    this.pauseMenu.onResume(() => {
+      this.clock.start();
+    });
 
     // Load initial level
     this.loadInitialLevel();
@@ -118,6 +131,7 @@ class Game {
       Mouse Wheel - Zoom<br>
       Space - Jump<br>
       C - Toggle First/Third Person<br>
+      O - Pause/Resume<br>
       P - Push Blocks (Level 2)
     `;
     uiContainer.appendChild(controls);
@@ -135,25 +149,30 @@ class Game {
 animate() {
   requestAnimationFrame(() => this.animate());
 
-  const delta = this.clock.getDelta();
-  const elapsedTime = this.clock.getElapsedTime();
   const environment = this.levelManager.getCurrentEnvironment();
 
+  // Always render scene, but skip updates if paused
   if (environment) {
-    // --- CRITICAL FIX: Only update blocks ONCE per frame ---
-    // Remove the environment.updateBlocks call here since it's already called in PlayerController
-    
-    // Update environment
-    if (environment.update && typeof environment.update === 'function') {
-      environment.update(delta);
+    // Only update game logic if not paused
+    if (!this.pauseMenu || !this.pauseMenu.isPaused()) {
+      const delta = this.clock.getDelta();
+      const elapsedTime = this.clock.getElapsedTime();
+
+      // --- CRITICAL FIX: Only update blocks ONCE per frame ---
+      // Remove the environment.updateBlocks call here since it's already called in PlayerController
+      
+      // Update environment
+      if (environment.update && typeof environment.update === 'function') {
+        environment.update(delta);
+      }
+
+      // Update player controller (this includes block updates)
+      if (this.playerController) {
+        this.playerController.update(delta, elapsedTime);
+      }
     }
 
-    // Update player controller (this includes block updates)
-    if (this.playerController) {
-      this.playerController.update(delta, elapsedTime);
-    }
-
-    // Render scene
+    // Render scene (even when paused to show the scene)
     this.renderer.render(environment.getScene(), this.camera);
   }
 }

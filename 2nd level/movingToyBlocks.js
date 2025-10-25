@@ -21,9 +21,9 @@ export function createInteractiveToyBlocks(Scene, camera, player, renderer) {
 
     const block = new THREE.Mesh(geometry, material);
     block.position.set(
-      (Math.random() - 0.5) * 6 + 17, // distribute near (17, -24)
+      (Math.random() - 0.5) * 3 + 27, // keep x position more stable
       size / 2,
-      (Math.random() - 0.5) * 6 - 24
+      (Math.random() - 0.5) * 10 - 24 // spread out along z axis
     );
 
     //block.scale.set(3.5, 3.5, 3.5);
