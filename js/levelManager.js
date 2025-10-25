@@ -6,10 +6,12 @@ import { placeModels } from "../1st level/modelPlacer.js";
 import { Environment } from "./environment.js";
 import { Environment as ClocktowerEnv } from "./Level 3/clocktower.js";
 import { createChildBedroom } from "../2nd level/usingmodels.js";
-import { addMirror } from "../2nd level/mirror.js";
+//import { addMirror } from "../2nd level/mirror.js";
 import { addTrain } from "../2nd level/train.js";
 import { train } from "../2nd level/terrain.js";
 import { createWall } from "../2nd level/terrain.js";
+import { createReflectorMirror } from "../2nd level/reflectorMirror.js";
+import { createAdventureTimer } from "../2nd level/Level2Timer.js";
 
 export class LevelManager {
   constructor(renderer, camera, playerController) {
@@ -24,10 +26,22 @@ export class LevelManager {
       3: "Clocktower (Level 3)",
     };
     this.level2Blocks = null; // Store reference to blocks for updates
+    this.adventureTimer = null; // Timer for Level 2
   }
 
   async loadLevel(levelNumber) {
     console.log(`Loading level ${levelNumber}...`);
+
+    // Handle timer visibility based on level
+    if (this.adventureTimer) {
+      if (levelNumber === 2) {
+        // Timer will be shown and started in loadLevel2
+      } else {
+        // Hide and stop timer for other levels
+        this.adventureTimer.stop();
+        this.adventureTimer.hide();
+      }
+    }
 
     // Clean up current level
     if (this.currentEnvironment) {
@@ -163,6 +177,8 @@ export class LevelManager {
     });
     this.currentEnvironment.addCollidables(trainCollidables);
 
+    /*
+
     // Add mirror
     const { mirrorGroup } = await addMirror({
       scene: this.currentEnvironment.getScene(),
@@ -178,8 +194,32 @@ export class LevelManager {
       }
     });
     this.currentEnvironment.addCollidables(mirrorCollidables);
+    */
 
-    console.log("Level 2 (Bedroom) loaded with block collision support");
+    // Add reflective mirror using Reflector class
+    const reflectorMirror = createReflectorMirror({
+      scene: this.currentEnvironment.getScene(),
+      width: 3,  // Width of the mirror
+      height: 8, // Height of the mirror
+      position: { x: 20, y: 5, z: 6.2 }, // Position it at same location as the model mirror
+      rotation: { x: 0, y: Math.PI, z: 0 }, // Rotate to face the room
+      textureWidth: 512,  // Reduced from 2048 for better performance
+      textureHeight: 512, // Reduced from 2048 for better performance
+      color: 0xcccccc,  // Slightly tinted reflection
+      addFrame: true,
+      frameThickness: 0.3,
+      frameColor: 0x8B4513 // Brown/wood frame
+    });
+
+    // Create and start the adventure timer for Level 2
+    if (!this.adventureTimer) {
+      this.adventureTimer = createAdventureTimer();
+    }
+    this.adventureTimer.reset();
+    this.adventureTimer.show();
+    this.adventureTimer.start();
+
+    console.log("Level 2 (Bedroom) loaded with block collision support and reflector mirror");
   }
 
   async loadLevel3() {

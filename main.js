@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { PlayerController } from "./js/playerController.js";
 import { LevelManager } from "./js/levelManager.js";
-import { createPauseMenu } from "./js/pauseMenu.js";
+import { createPauseMenu } from "./2nd level/pauseMenu.js";
 
 class Game {
   constructor() {

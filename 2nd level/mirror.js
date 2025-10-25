@@ -62,7 +62,7 @@ export async function addMirror({
 
         // Collect collidable meshes inside the mirror if requested or if meshes marked collidable
         const collidables = [];
-        mirrorGroup.traverse((child) => {
+        mirrorGroup.traverse((child) => {s
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;

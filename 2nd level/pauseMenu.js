@@ -1,11 +1,11 @@
-// js/pauseMenu.js - Adventurous Pause Menu
+// 2nd level/pauseMenu.js - Stewie's Room Themed Pause Menu
 
 export function createPauseMenu() {
   let isPaused = false;
   let onPauseCallback = null;
   let onResumeCallback = null;
 
-  // Create the pause menu overlay
+  // Create the pause menu overlay with Stewie's blue theme
   const pauseOverlay = document.createElement("div");
   pauseOverlay.id = "pause-menu-overlay";
   pauseOverlay.style.cssText = `
@@ -14,118 +14,131 @@ export function createPauseMenu() {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, rgba(20, 30, 48, 0.95) 0%, rgba(36, 59, 85, 0.95) 100%);
+    background: radial-gradient(ellipse at center, rgba(100, 180, 255, 0.95) 0%, rgba(50, 120, 200, 0.96) 100%);
     display: none;
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(8px);
     animation: fadeIn 0.3s ease-in-out;
   `;
 
-  // Create the menu container
+  // Create the menu container with Stewie's blue and red colors
   const menuContainer = document.createElement("div");
   menuContainer.style.cssText = `
-    background: linear-gradient(145deg, #1a2332 0%, #2d4059 100%);
-    border: 3px solid #d4af37;
+    background: linear-gradient(145deg, #e6f3ff 0%, #cce7ff 100%);
+    border: 5px solid #3399ff;
     border-radius: 20px;
     padding: 40px 60px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), inset 0 0 30px rgba(212, 175, 55, 0.1);
+    box-shadow: 0 15px 40px rgba(51, 153, 255, 0.6), 
+                inset 0 0 30px rgba(100, 180, 255, 0.3),
+                0 0 0 3px #66b3ff;
     text-align: center;
     max-width: 500px;
     position: relative;
-    animation: slideIn 0.4s ease-out;
   `;
 
-  // Add decorative corners
+  // Add decorative corners with Stewie's colors
   const cornerStyle = `
     position: absolute;
     width: 30px;
     height: 30px;
-    border: 3px solid #d4af37;
+    border: 4px solid #3399ff;
+    border-radius: 5px;
   `;
   
   const topLeftCorner = document.createElement("div");
-  topLeftCorner.style.cssText = cornerStyle + "top: -3px; left: -3px; border-right: none; border-bottom: none;";
+  topLeftCorner.style.cssText = cornerStyle + "top: -5px; left: -5px; border-right: none; border-bottom: none; background: #66b3ff;";
   
   const topRightCorner = document.createElement("div");
-  topRightCorner.style.cssText = cornerStyle + "top: -3px; right: -3px; border-left: none; border-bottom: none;";
+  topRightCorner.style.cssText = cornerStyle + "top: -5px; right: -5px; border-left: none; border-bottom: none; background: #99ccff;";
   
   const bottomLeftCorner = document.createElement("div");
-  bottomLeftCorner.style.cssText = cornerStyle + "bottom: -3px; left: -3px; border-right: none; border-top: none;";
+  bottomLeftCorner.style.cssText = cornerStyle + "bottom: -5px; left: -5px; border-right: none; border-top: none; background: #99ccff;";
   
   const bottomRightCorner = document.createElement("div");
-  bottomRightCorner.style.cssText = cornerStyle + "bottom: -3px; right: -3px; border-left: none; border-top: none;";
+  bottomRightCorner.style.cssText = cornerStyle + "bottom: -5px; right: -5px; border-left: none; border-top: none; background: #66b3ff;";
 
   menuContainer.appendChild(topLeftCorner);
   menuContainer.appendChild(topRightCorner);
   menuContainer.appendChild(bottomLeftCorner);
   menuContainer.appendChild(bottomRightCorner);
 
-  // Create title
+  // Create title with Stewie's theme
   const title = document.createElement("h1");
-  title.innerText = "⚔️ PAUSED ⚔️";
+  title.innerText = "🚀 PAUSED 🚀";
   title.style.cssText = `
-    color: #d4af37;
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-size: 48px;
-    margin: 0 0 30px 0;
-    text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.5);
+    color: #ff3333;
+    font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', cursive;
+    font-size: 52px;
+    margin: 0 0 25px 0;
+    text-shadow: 3px 3px 0px #0066cc, 5px 5px 10px rgba(51, 153, 255, 0.5);
     letter-spacing: 4px;
     font-weight: bold;
   `;
 
-  // Create instruction text
+  // Create instruction text with Stewie's styling
   const instruction = document.createElement("p");
-  instruction.innerText = "Press 'O' to Resume Your Adventure";
+  instruction.innerText = "Press 'O' to Resume Conquest!";
   instruction.style.cssText = `
-    color: #e8d4a0;
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-size: 20px;
+    color: #0066cc;
+    font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', cursive;
+    font-size: 22px;
     margin: 20px 0;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    text-shadow: 2px 2px 0px rgba(255, 51, 51, 0.5);
     letter-spacing: 1px;
   `;
 
-  // Create decorative divider
+  // Create decorative divider with Stewie's colors
   const divider = document.createElement("div");
   divider.style.cssText = `
     width: 80%;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #d4af37, transparent);
-    margin: 20px auto;
+    height: 4px;
+    background: repeating-linear-gradient(
+      90deg,
+      #ff3333 0px,
+      #ff6666 10px,
+      #3399ff 20px,
+      #66b3ff 30px,
+      #0066cc 40px,
+      #ff3333 50px
+    );
+    margin: 25px auto;
+    border-radius: 2px;
   `;
 
-  // Create tips section
+  // Create tips section with Stewie's theme
   const tipsContainer = document.createElement("div");
   tipsContainer.style.cssText = `
     margin-top: 30px;
     padding: 20px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
-    border: 1px solid rgba(212, 175, 55, 0.3);
+    background: linear-gradient(135deg, #e6f3ff 0%, #ffe6e6 100%);
+    border-radius: 15px;
+    border: 3px dashed #ff3333;
+    box-shadow: inset 0 0 15px rgba(51, 153, 255, 0.3);
   `;
 
   const tipsTitle = document.createElement("p");
-  tipsTitle.innerText = "🗺️ Adventurer's Tips";
+  tipsTitle.innerText = "🎯 Mission Control";
   tipsTitle.style.cssText = `
-    color: #d4af37;
-    font-family: 'Georgia', 'Times New Roman', serif;
-    font-size: 18px;
+    color: #ff3333;
+    font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', cursive;
+    font-size: 28px;
     margin: 0 0 15px 0;
     font-weight: bold;
+    text-shadow: 2px 2px 0px rgba(0, 102, 204, 0.5);
   `;
 
   const tips = document.createElement("p");
   tips.innerHTML = `
-    <span style="display: block; margin: 8px 0; color: #c9b88a; font-family: 'Georgia', serif; font-size: 14px;">
-      🎮 Use WASD to move through the realm
+    <span style="display: block; margin: 10px 0; color: #0066cc; font-family: 'Comic Sans MS', cursive; font-size: 20px;">
+      🎮 Use WASD to navigate the room
     </span>
-    <span style="display: block; margin: 8px 0; color: #c9b88a; font-family: 'Georgia', serif; font-size: 14px;">
-      🔍 Explore every corner for secrets
+    <span style="display: block; margin: 10px 0; color: #0066cc; font-family: 'Comic Sans MS', cursive; font-size: 20px;">
+      🚀 Explore and conquer objectives
     </span>
-    <span style="display: block; margin: 8px 0; color: #c9b88a; font-family: 'Georgia', serif; font-size: 14px;">
-      ⚡ Press 'O' anytime to pause your quest
+    <span style="display: block; margin: 10px 0; color: #0066cc; font-family: 'Comic Sans MS', cursive; font-size: 20px;">
+      ⏸️ Press 'O' to pause your mission
     </span>
   `;
 
@@ -140,36 +153,12 @@ export function createPauseMenu() {
   pauseOverlay.appendChild(menuContainer);
   document.body.appendChild(pauseOverlay);
 
-  // Add CSS animations
+  // Add CSS for fade in effect only
   const style = document.createElement("style");
   style.textContent = `
     @keyframes fadeIn {
       from { opacity: 0; }
       to { opacity: 1; }
-    }
-    
-    @keyframes slideIn {
-      from {
-        transform: translateY(-50px) scale(0.9);
-        opacity: 0;
-      }
-      to {
-        transform: translateY(0) scale(1);
-        opacity: 1;
-      }
-    }
-
-    #pause-menu-overlay h1 {
-      animation: glow 2s ease-in-out infinite alternate;
-    }
-
-    @keyframes glow {
-      from {
-        text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.5);
-      }
-      to {
-        text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8), 0 0 30px rgba(212, 175, 55, 0.8), 0 0 40px rgba(212, 175, 55, 0.6);
-      }
     }
   `;
   document.head.appendChild(style);
