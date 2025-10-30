@@ -301,7 +301,8 @@ export class LevelManager {
       this.mkChaser = new MKChaser(
         this.currentEnvironment.getScene(),
         this.currentEnvironment.getPlayer(),
-        this.currentEnvironment.getRoomBounds()
+        this.currentEnvironment.getRoomBounds(),
+        this.currentEnvironment
       );
       
       // Add the enemy model to collidables if needed
@@ -398,6 +399,11 @@ export class LevelManager {
   update(delta, elapsedTime) {
     if (this.currentLevel === 2 && this.currentEnvironment && this.currentEnvironment.updateBlocks) {
       this.currentEnvironment.updateBlocks(delta, elapsedTime);
+
+      // Update MK chaser if it exists
+      if (this.mkChaser) {
+        this.mkChaser.update(delta);
+      }
 
       // Add collision detection for MK enemy
       this.checkMKCollisions();

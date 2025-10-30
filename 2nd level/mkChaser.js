@@ -24,7 +24,7 @@ export class MKChaser {
     this.wasRunning = false;
 
     // --- Movement tuning ---
-    this.baseSpeed = 0.1;          // Base chase speed
+    this.baseSpeed = 0.01;          // SLOWER chase speed (was 0.1)
     this.minDistance = 2.5;        // Stop distance
     this.attackDistance = 3.0;     // Attack trigger range
 
@@ -53,8 +53,8 @@ export class MKChaser {
       "./models/MK.glb",
       (gltf) => {
         this.model = gltf.scene;
-        this.model.scale.set(1.8, 1.8, 1.8);
-        this.model.position.set(5, 0, -5);
+        this.model.scale.set(2.5, 2.5, 2.5);
+        this.model.position.set(10, 0, -2);
         this.model.name = "MK_Enemy";
 
         // Disable root motion (prevents teleporting)
@@ -179,9 +179,15 @@ export class MKChaser {
       newAction.time = this.runAnimationPreservedTime;
     }
     
+    // ADJUST ANIMATION SPEED BASED ON ACTION
+    if (actionName === 'mutant-run') {
+      newAction.setEffectiveTimeScale(0.4); // SLOWER running animation
+    } else {
+      newAction.setEffectiveTimeScale(1.0); // Normal speed for other animations
+    }
+    
     // Ensure the action is properly set up
     newAction.reset();
-    newAction.setEffectiveTimeScale(1.0);
     newAction.setEffectiveWeight(1.0);
     newAction.fadeIn(duration);
     newAction.play();
@@ -219,7 +225,14 @@ export class MKChaser {
     overlayAction.reset();
     overlayAction.setLoop(THREE.LoopOnce);
     overlayAction.clampWhenFinished = true;
-    overlayAction.setEffectiveTimeScale(1.0);
+    
+    // ADJUST ATTACK ANIMATION SPEEDS
+    if (actionName === 'jump-attack' || actionName === 'slash') {
+      overlayAction.setEffectiveTimeScale(0.3); // SLOWER attack animations
+    } else {
+      overlayAction.setEffectiveTimeScale(1.0); // Normal speed for other overlays
+    }
+    
     overlayAction.setEffectiveWeight(1.0);
     overlayAction.fadeIn(fadeDuration);
     overlayAction.play();
@@ -269,7 +282,7 @@ export class MKChaser {
     if (this.mixer) this.mixer.update(delta);
     if (this.currentBaseAction === 'mutant-run') this.updateRunningAnimationTime();
 
-    // Apply gravity and collision detection
+    // Apply gravity and collision detection FIRST
     this.updateMKPhysics(delta);
 
     if (this.attackCooldown > 0) {
@@ -299,23 +312,24 @@ export class MKChaser {
     if (this.currentBaseAction === 'mutant-run' && !this.overlayAction && distance > this.minDistance) {
       this.direction.normalize();
 
-      // Smooth scaling of chase speed
+      // Smooth scaling of chase speed - REDUCED MULTIPLIERS
       let moveSpeed = this.baseSpeed;
-      if (distance > 10) moveSpeed *= 1.6;
-      else if (distance > 6) moveSpeed *= 1.3;
-      else if (distance < 4) moveSpeed *= 0.8;
+      if (distance > 10) moveSpeed *= 1;  // was 1.6
+      else if (distance > 6) moveSpeed *= 0.8; // was 1.3
+      else if (distance < 4) moveSpeed *= 0.3; // was 0.8
 
       // Frame-independent motion with collision detection
       const movement = new THREE.Vector3();
       movement.copy(this.direction).multiplyScalar(moveSpeed * delta * 60);
       
-      this.applyMovementWithCollision(movement, delta);
+      // Apply movement with collision detection
+      this.applyMovementWithCollision(movement);
     }
 
     // --- Rotation (more responsive) ---
     if ((this.currentBaseAction !== 'idle' || this.overlayAction)) {
       const targetAngle = Math.atan2(this.direction.x, this.direction.z);
-      this.model.rotation.y = THREE.MathUtils.lerp(this.model.rotation.y, targetAngle, 0.2); // faster turn
+      this.model.rotation.y = THREE.MathUtils.lerp(this.model.rotation.y, targetAngle, 0.2);
     }
 
     // --- Bounds check ---
@@ -330,7 +344,25 @@ export class MKChaser {
     if (!this.model) return;
 
     const mkPos = this.model.position;
-    const collidables = this.environment ? this.environment.getCollidables() : [];
+    
+    // Get collidables from environment - with fallback
+    let collidables = [];
+    if (this.environment && typeof this.environment.getCollidables === 'function') {
+      collidables = this.environment.getCollidables();
+    } else {
+      console.warn('MKChaser: No environment or getCollidables method available');
+      // Fallback: just keep on ground
+      if (mkPos.y > 0) {
+        this.velocityY -= 20 * delta;
+        mkPos.y += this.velocityY * delta;
+        if (mkPos.y < 0) {
+          mkPos.y = 0;
+          this.velocityY = 0;
+          this.onGround = true;
+        }
+      }
+      return;
+    }
 
     // STEP 1: Apply gravity
     this.velocityY -= 20 * delta;
@@ -356,7 +388,7 @@ export class MKChaser {
       if (!horizontallyAligned) continue;
 
       const blockTop = objBox.max.y;
-      const mkBottom = mkPos.y; // MK's bottom is at position.y
+      const mkBottom = mkPos.y;
       const distance = mkBottom - blockTop;
 
       // Check if we're standing on this object
@@ -389,11 +421,20 @@ export class MKChaser {
     }
   }
 
-  applyMovementWithCollision(movement, delta) {
+  applyMovementWithCollision(movement) {
     if (!this.model || movement.lengthSq() === 0) return;
 
     const mkPos = this.model.position;
-    const collidables = this.environment ? this.environment.getCollidables() : [];
+    
+    // Get collidables from environment
+    let collidables = [];
+    if (this.environment && typeof this.environment.getCollidables === 'function') {
+      collidables = this.environment.getCollidables();
+    } else {
+      // If no collision system, just move
+      mkPos.add(movement);
+      return;
+    }
 
     const newPos = new THREE.Vector3(
       mkPos.x + movement.x,
@@ -403,36 +444,28 @@ export class MKChaser {
 
     let canMove = true;
     
-    // Check for collisions, but skip blocks we're standing on
+    // Check for collisions with all collidable objects
     for (const obj of collidables) {
       if (obj.userData?.collidable === false) continue;
       
-      // Skip the block we're currently standing on
+      // Skip the block we're currently standing on for horizontal movement
       if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
 
       const objBox = new THREE.Box3().setFromObject(obj);
       const mkBox = new THREE.Box3(
         new THREE.Vector3(
           newPos.x - this.MK_HALF_WIDTH,
-          newPos.y, // MK bottom at ground level
+          newPos.y,
           newPos.z - this.MK_HALF_WIDTH
         ),
         new THREE.Vector3(
           newPos.x + this.MK_HALF_WIDTH,
-          newPos.y + this.MK_HEIGHT, // MK top
+          newPos.y + this.MK_HEIGHT,
           newPos.z + this.MK_HALF_WIDTH
         )
       );
 
-      // Only check collision if we're not clearly above the object
-      const mkBottom = mkBox.min.y;
-      const objectTop = objBox.max.y;
-      
-      // If MK is above the object, allow movement
-      if (mkBottom > objectTop + 0.1) {
-        continue;
-      }
-
+      // Check if MK would collide with this object
       if (mkBox.intersectsBox(objBox)) {
         canMove = false;
         break;
@@ -442,6 +475,78 @@ export class MKChaser {
     if (canMove) {
       mkPos.x = newPos.x;
       mkPos.z = newPos.z;
+    } else {
+      // Try X movement only
+      const newXPos = new THREE.Vector3(
+        mkPos.x + movement.x,
+        mkPos.y,
+        mkPos.z
+      );
+      
+      let canMoveX = true;
+      for (const obj of collidables) {
+        if (obj.userData?.collidable === false) continue;
+        if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
+
+        const objBox = new THREE.Box3().setFromObject(obj);
+        const mkBoxX = new THREE.Box3(
+          new THREE.Vector3(
+            newXPos.x - this.MK_HALF_WIDTH,
+            newXPos.y,
+            newXPos.z - this.MK_HALF_WIDTH
+          ),
+          new THREE.Vector3(
+            newXPos.x + this.MK_HALF_WIDTH,
+            newXPos.y + this.MK_HEIGHT,
+            newXPos.z + this.MK_HALF_WIDTH
+          )
+        );
+
+        if (mkBoxX.intersectsBox(objBox)) {
+          canMoveX = false;
+          break;
+        }
+      }
+
+      if (canMoveX) {
+        mkPos.x = newXPos.x;
+      }
+
+      // Try Z movement only  
+      const newZPos = new THREE.Vector3(
+        mkPos.x,
+        mkPos.y,
+        mkPos.z + movement.z
+      );
+      
+      let canMoveZ = true;
+      for (const obj of collidables) {
+        if (obj.userData?.collidable === false) continue;
+        if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
+
+        const objBox = new THREE.Box3().setFromObject(obj);
+        const mkBoxZ = new THREE.Box3(
+          new THREE.Vector3(
+            newZPos.x - this.MK_HALF_WIDTH,
+            newZPos.y,
+            newZPos.z - this.MK_HALF_WIDTH
+          ),
+          new THREE.Vector3(
+            newZPos.x + this.MK_HALF_WIDTH,
+            newZPos.y + this.MK_HEIGHT,
+            newZPos.z + this.MK_HALF_WIDTH
+          )
+        );
+
+        if (mkBoxZ.intersectsBox(objBox)) {
+          canMoveZ = false;
+          break;
+        }
+      }
+
+      if (canMoveZ) {
+        mkPos.z = newZPos.z;
+      }
     }
   }
 
