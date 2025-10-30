@@ -101,7 +101,7 @@ export function createLevel2Quizzes({ scene, player, camera, onAttempt = null, o
     },
     {
       id: 'train-riddle',
-      text: "To achieve flat shading the normal vectors associated with the vertices of a primitive should\n\nQuestion 4 Select one:",
+      text: "To achieve flat shading the normal vectors associated with the vertices of a primitive should:",
       correct: 'b. be normal to the primitive.',
       options: [
         'a. point towards the light source.',

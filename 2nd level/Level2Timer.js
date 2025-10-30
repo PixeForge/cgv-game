@@ -5,6 +5,10 @@ export function createAdventureTimer() {
   let elapsedSeconds = 0;
   let isRunning = false;
   let animationFrameId = null;
+  let isCountdown = false;
+  let countdownTotal = 0; // seconds
+  let didExpire = false;
+  let onExpireCb = null;
 
   // Create timer container with Stewie's blue and red theme
   const timerContainer = document.createElement("div");
@@ -124,7 +128,21 @@ export function createAdventureTimer() {
     
     const currentTime = Date.now();
     elapsedSeconds = (currentTime - startTime) / 1000;
-    timeDisplay.innerText = formatTime(elapsedSeconds);
+    if (isCountdown) {
+      const remaining = Math.max(0, countdownTotal - elapsedSeconds);
+      timeDisplay.innerText = formatTime(remaining);
+
+      if (remaining <= 0 && !didExpire) {
+        didExpire = true;
+        isRunning = false;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        // fire expire callback
+        try { if (typeof onExpireCb === 'function') onExpireCb(); } catch (_) {}
+        return;
+      }
+    } else {
+      timeDisplay.innerText = formatTime(elapsedSeconds);
+    }
     
     animationFrameId = requestAnimationFrame(updateDisplay);
   }
@@ -134,6 +152,7 @@ export function createAdventureTimer() {
     start: () => {
       if (!isRunning) {
         startTime = Date.now() - (elapsedSeconds * 1000);
+        didExpire = false;
         isRunning = true;
         updateDisplay();
         console.log("⏳ Adventure timer started!");
@@ -154,6 +173,7 @@ export function createAdventureTimer() {
       elapsedSeconds = 0;
       startTime = Date.now();
       timeDisplay.innerText = "00:00";
+      didExpire = false;
       console.log("⏳ Adventure timer reset!");
     },
     
@@ -182,6 +202,16 @@ export function createAdventureTimer() {
     },
     setQuizProgress: (attempted, total) => {
       quizTag.innerText = `Quizzes: ${attempted}/${total}`;
+    },
+    setCountdown: (seconds) => {
+      isCountdown = true;
+      countdownTotal = Math.max(0, seconds | 0);
+      elapsedSeconds = 0;
+      startTime = Date.now();
+      timeDisplay.innerText = formatTime(countdownTotal);
+    },
+    onExpire: (cb) => {
+      onExpireCb = cb;
     }
   };
 }

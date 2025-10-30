@@ -37,6 +37,39 @@ export class LevelManager {
     this.level2Portal = null;
   }
 
+  handleLevel2Timeout() {
+    try {
+      // Show a simple lose overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'level2-lose-overlay';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+        display: flex; align-items: center; justify-content: center; z-index: 3000;`;
+      const box = document.createElement('div');
+      box.style.cssText = `
+        background: white; padding: 24px 32px; border-radius: 12px;
+        font-family: Arial, sans-serif; color: #c62828; font-size: 24px;`;
+      box.textContent = 'You lose! Time ran out. Restarting...';
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      // Stop and hide timer
+      if (this.adventureTimer) {
+        this.adventureTimer.stop();
+        this.adventureTimer.hide();
+      }
+
+      // Reload Level 2 after short delay
+      setTimeout(() => {
+        try { document.body.removeChild(overlay); } catch (_) {}
+        this.loadLevel(2);
+      }, 1500);
+    } catch (e) {
+      console.warn('Failed to handle timeout:', e);
+      this.loadLevel(2);
+    }
+  }
+
   async loadLevel(levelNumber) {
     console.log(`Loading level ${levelNumber}...`);
 
@@ -394,6 +427,13 @@ export class LevelManager {
     }
     this.adventureTimer.reset();
     this.adventureTimer.show();
+    // Configure countdown from 5 minutes and start
+    if (this.adventureTimer.setCountdown) {
+      this.adventureTimer.setCountdown(300);
+    }
+    if (this.adventureTimer.onExpire) {
+      this.adventureTimer.onExpire(() => this.handleLevel2Timeout());
+    }
     this.adventureTimer.start();
     if (this.adventureTimer.setQuizProgress) {
       this.adventureTimer.setQuizProgress(0, this.level2QuizTotal);
