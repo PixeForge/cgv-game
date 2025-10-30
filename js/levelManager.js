@@ -15,6 +15,7 @@ import { createAdventureTimer } from "../2nd level/Level2Timer.js";
 import { createKey, setupKeyInteraction } from "../2nd level/key.js";
 import { MKChaser } from "../2nd level/mkChaser.js";
 import { createLevel2Quizzes } from "../2nd level/quiz.js";
+import { createPortal } from "../2nd level/portal.js";
 
 export class LevelManager {
   constructor(renderer, camera, playerController) {
@@ -31,7 +32,9 @@ export class LevelManager {
     this.level2Blocks = null; // Store reference to blocks for updates
     this.adventureTimer = null; // Timer for Level 2
     this.level2QuizAttempts = 0;
-    this.level2QuizTotal = 3;
+    this.level2QuizTotal = 2;
+    this.level2QuizCompleted = 0;
+    this.level2Portal = null;
   }
 
   async loadLevel(levelNumber) {
@@ -309,6 +312,27 @@ export class LevelManager {
           if (this.adventureTimer && this.adventureTimer.setQuizProgress) {
             this.adventureTimer.setQuizProgress(this.level2QuizAttempts, this.level2QuizTotal);
           }
+        },
+        onComplete: (quizIndex) => {
+          this.level2QuizCompleted += 1;
+          if (this.level2QuizCompleted >= this.level2QuizTotal) {
+            // Spawn the portal
+            try {
+            this.level2Portal = createPortal({
+              scene: this.currentEnvironment.getScene(),
+              position: { x: 8, y: 4, z: -8 }
+            });
+            if (this.level2Portal && this.level2Portal.setRotation) {
+              this.level2Portal.setRotation(0, Math.PI / 2, 0);
+            }
+            if (this.level2Portal && this.level2Portal.collider) {
+              this.currentEnvironment.addCollidables([this.level2Portal.collider]);
+            }
+              console.log('Magic portal appeared. Use setPosition(x,y,z) to move it.');
+            } catch (e) {
+              console.warn('Failed to create portal:', e);
+            }
+          }
         }
       });
 
@@ -456,6 +480,11 @@ export class LevelManager {
       // Update quizzes (no-op for now, kept for future timers)
       if (this.level2Quizzes && this.level2Quizzes.update) {
         this.level2Quizzes.update(delta, elapsedTime);
+      }
+
+      // Update portal animation if present
+      if (this.level2Portal && this.level2Portal.update) {
+        this.level2Portal.update(delta);
       }
     }
   }

@@ -1,5 +1,5 @@
 // 2nd level/quiz.js
-export function createLevel2Quizzes({ scene, player, camera, onAttempt = null }) {
+export function createLevel2Quizzes({ scene, player, camera, onAttempt = null, onComplete = null }) {
   let active = false;
   let overlay = null;
   let currentQuizIndex = null;
@@ -159,7 +159,12 @@ export function createLevel2Quizzes({ scene, player, camera, onAttempt = null })
         if (opt.toLowerCase() === r.correct.toLowerCase()) {
           feedback.style.color = '#2e7d32';
           feedback.textContent = 'Correct!';
-          completed.add(index);
+          if (!completed.has(index)) {
+            completed.add(index);
+            if (typeof onComplete === 'function') {
+              try { onComplete(index); } catch (_) {}
+            }
+          }
           setTimeout(closeQuiz, 600);
         } else {
           feedback.style.color = '#c62828';

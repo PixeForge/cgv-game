@@ -64,7 +64,7 @@ export function createAdventureTimer() {
   // Add quizzes attempted tag under the timer
   const quizTag = document.createElement("div");
   quizTag.id = "quiz-progress";
-  quizTag.innerText = "Quizzes: 0/3";
+  quizTag.innerText = "Quizzes: 0/2";
   quizTag.style.cssText = `
     color: #003d80;
     font-size: 14px;
