@@ -148,7 +148,7 @@ class Game {
       Space - Jump<br>
       C - Toggle First/Third Person<br>
       O - Pause/Resume<br>
-      P - Push Blocks (Level 2)
+      P - Interact/Quiz (Level 2)
     `;
     uiContainer.appendChild(controls);
 

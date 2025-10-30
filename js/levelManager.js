@@ -14,6 +14,7 @@ import { createReflectorMirror } from "../2nd level/reflectorMirror.js";
 import { createAdventureTimer } from "../2nd level/Level2Timer.js";
 import { createKey, setupKeyInteraction } from "../2nd level/key.js";
 import { MKChaser } from "../2nd level/mkChaser.js";
+import { createLevel2Quizzes } from "../2nd level/quiz.js";
 
 export class LevelManager {
   constructor(renderer, camera, playerController) {
@@ -294,6 +295,29 @@ export class LevelManager {
       console.warn('Failed to create reflector mirror:', error);
     }
 
+    // --- Initialize Level 2 Quizzes ---
+    try {
+      this.level2Quizzes = createLevel2Quizzes({
+        scene: this.currentEnvironment.getScene(),
+        player: this.currentEnvironment.getPlayer(),
+        camera: this.camera
+      });
+
+      // Define first quiz zone: by the mirror by the wall
+      this.level2Quizzes.addZone({
+        id: 'quiz-mirror',
+        position: { x: 20, y: 0, z: 6.2 },
+        radius: 3.5,
+        quizIndex: 0
+      });
+
+      // Disable blocks’ P interaction while quizzes are active
+      window.LEVEL2_DISABLE_BLOCK_PUSH = true;
+      console.log('Level 2 quizzes initialized');
+    } catch (e) {
+      console.warn('Failed to initialize Level 2 quizzes:', e);
+    }
+
     // --- Add MK enemy that chases the player ---
     // In loadLevel2 method - ensure MKChaser is properly set up
     // In loadLevel2 method - ensure MKChaser is properly set up
@@ -407,6 +431,11 @@ export class LevelManager {
 
       // Add collision detection for MK enemy
       this.checkMKCollisions();
+
+      // Update quizzes (no-op for now, kept for future timers)
+      if (this.level2Quizzes && this.level2Quizzes.update) {
+        this.level2Quizzes.update(delta, elapsedTime);
+      }
     }
   }
 
