@@ -365,6 +365,21 @@ export class LevelManager {
             } catch (e) {
               console.warn('Failed to create portal:', e);
             }
+
+            // Subtle hint popup after completing both quizzes
+            try {
+              const hint = document.createElement('div');
+              hint.id = 'level2-subtle-hint';
+              hint.textContent = "Blocks don’t only push forward—sometimes they help you rise where pillows rest; and do not let them get away";
+              hint.style.cssText = `
+                position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+                background: rgba(255,255,255,0.92); color: #004a99; border: 2px solid #66b3ff; border-radius: 10px;
+                padding: 10px 16px; font-family: Arial, sans-serif; font-size: 16px; z-index: 2500;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+              `;
+              document.body.appendChild(hint);
+              setTimeout(() => { try { document.body.removeChild(hint); } catch (_) {} }, 6000);
+            } catch (_) {}
           }
         }
       });

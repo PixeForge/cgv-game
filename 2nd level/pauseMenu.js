@@ -1,9 +1,10 @@
 // 2nd level/pauseMenu.js - Stewie's Room Themed Pause Menu
 
-export function createPauseMenu() {
+export function createPauseMenu({ isEnabled } = {}) {
   let isPaused = false;
   let onPauseCallback = null;
   let onResumeCallback = null;
+  const canActivate = typeof isEnabled === 'function' ? isEnabled : () => true;
 
   // Create the pause menu overlay with Stewie's blue theme
   const pauseOverlay = document.createElement("div");
@@ -145,6 +146,36 @@ export function createPauseMenu() {
   tipsContainer.appendChild(tipsTitle);
   tipsContainer.appendChild(tips);
 
+  // Level 2 specific controls section
+  const controlsTitle = document.createElement("p");
+  controlsTitle.innerText = "🕹️ Level 2 Controls";
+  controlsTitle.style.cssText = `
+    color: #ff3333;
+    font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', cursive;
+    font-size: 24px;
+    margin: 18px 0 8px 0;
+    font-weight: bold;
+    text-shadow: 2px 2px 0px rgba(0, 102, 204, 0.5);
+  `;
+
+  const controlsList = document.createElement("div");
+  controlsList.style.cssText = `
+    color: #0066cc; font-family: 'Comic Sans MS', cursive; font-size: 18px; line-height: 1.6;
+  `;
+  controlsList.innerHTML = `
+    WASD – Move<br/>
+    Mouse Drag – Rotate Camera<br/>
+    Mouse Wheel – Zoom<br/>
+    Space – Jump<br/>
+    C – Toggle First/Third Person<br/>
+    O – Pause/Resume<br/>
+    I – Interact/Quiz<br/>
+    P – Push Blocks
+  `;
+
+  tipsContainer.appendChild(controlsTitle);
+  tipsContainer.appendChild(controlsList);
+
   // Assemble the menu
   menuContainer.appendChild(title);
   menuContainer.appendChild(instruction);
@@ -166,7 +197,9 @@ export function createPauseMenu() {
   // Key listener for toggling pause
   function handleKeyPress(event) {
     if (event.key.toLowerCase() === "o") {
-      togglePause();
+      if (canActivate()) {
+        togglePause();
+      }
     }
   }
 

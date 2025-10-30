@@ -50,8 +50,10 @@ class Game {
     // Setup UI
     this.setupUI();
 
-    // Initialize pause menu
-    this.pauseMenu = createPauseMenu();
+    // Initialize pause menu (only active in Level 2)
+    this.pauseMenu = createPauseMenu({
+      isEnabled: () => this.levelManager?.getCurrentLevel?.() === 2
+    });
     
     // Handle pause state properly
     this.pauseMenu.onPause(() => {
