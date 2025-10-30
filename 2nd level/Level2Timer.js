@@ -61,6 +61,18 @@ export function createAdventureTimer() {
   `;
   timerContainer.appendChild(timeDisplay);
 
+  // Add quizzes attempted tag under the timer
+  const quizTag = document.createElement("div");
+  quizTag.id = "quiz-progress";
+  quizTag.innerText = "Quizzes: 0/3";
+  quizTag.style.cssText = `
+    color: #003d80;
+    font-size: 14px;
+    margin-top: 6px;
+    font-weight: bold;
+  `;
+  timerContainer.appendChild(quizTag);
+
   // Add decorative corners with Stewie's colors
   const cornerStyle = `
     position: absolute;
@@ -167,6 +179,9 @@ export function createAdventureTimer() {
       }
       document.body.removeChild(timerContainer);
       document.head.removeChild(style);
+    },
+    setQuizProgress: (attempted, total) => {
+      quizTag.innerText = `Quizzes: ${attempted}/${total}`;
     }
   };
 }

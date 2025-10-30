@@ -142,13 +142,8 @@ function update(delta, elapsedTime) {
 
     // Toggle push mode on P
     if (keys["p"]) {
-      // Temporary global flag to disable block pushing when quizzes use P
-      if (window && window.LEVEL2_DISABLE_BLOCK_PUSH) {
-        keys["p"] = false;
-      } else {
       nearest.userData.pushing = !nearest.userData.pushing;
       keys["p"] = false; // prevent rapid toggles
-      }
     }
 
     // If currently pushing, move in player's facing direction

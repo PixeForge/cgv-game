@@ -148,7 +148,8 @@ class Game {
       Space - Jump<br>
       C - Toggle First/Third Person<br>
       O - Pause/Resume<br>
-      P - Interact/Quiz (Level 2)
+      I - Interact/Quiz (Level 2)<br>
+      P - Push Blocks (Level 2)
     `;
     uiContainer.appendChild(controls);
 
@@ -167,12 +168,13 @@ class Game {
     const environment = this.levelManager.getCurrentEnvironment();
 
     if (environment) {
-      // Get delta time - if paused, use 0 to freeze animations
-      const delta = this.isPaused ? 0 : this.clock.getDelta();
+      const quizActive = !!window.LEVEL2_QUIZ_ACTIVE;
+      // Get delta time - if paused or quiz active, use 0 to freeze animations
+      const delta = (this.isPaused || quizActive) ? 0 : this.clock.getDelta();
       const elapsedTime = this.clock.getElapsedTime();
 
-      // Only update game logic if not paused
-      if (!this.isPaused) {
+      // Only update game logic if not paused and no quiz active
+      if (!this.isPaused && !quizActive) {
         // Update level manager (this handles block updates)
         this.levelManager.update(delta, elapsedTime);
 

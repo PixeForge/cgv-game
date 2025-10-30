@@ -1,9 +1,12 @@
 // 2nd level/quiz.js
-export function createLevel2Quizzes({ scene, player, camera }) {
+export function createLevel2Quizzes({ scene, player, camera, onAttempt = null }) {
   let active = false;
   let overlay = null;
   let currentQuizIndex = null;
   const zones = [];
+  let hintEl = null;
+  const completed = new Set();
+  const attempted = new Set();
 
   // Public: add proximity zone that triggers on 'P'
   function addZone({ id, position, radius = 3, quizIndex }) {
@@ -60,12 +63,10 @@ export function createLevel2Quizzes({ scene, player, camera }) {
       margin-bottom: 14px;
     `;
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Type your answer…';
-    input.style.cssText = `
-      width: 100%; padding: 10px 12px; font-size: 16px; border-radius: 8px;
-      border: 2px solid #66b3ff; outline: none; margin: 6px 0 12px 0;
+    const optionsWrap = document.createElement('div');
+    optionsWrap.id = 'quiz-options';
+    optionsWrap.style.cssText = `
+      display: grid; grid-template-columns: 1fr; gap: 8px; margin: 10px 0 14px 0;
     `;
 
     const feedback = document.createElement('div');
@@ -73,105 +74,148 @@ export function createLevel2Quizzes({ scene, player, camera }) {
     feedback.style.cssText = `min-height: 20px; margin-bottom: 8px; font-weight: bold;`;
 
     const buttons = document.createElement('div');
-    const submit = document.createElement('button');
-    submit.textContent = 'Submit';
-    submit.style.cssText = `
-      background:#4CAF50;color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;margin-right:8px;
-    `;
     const close = document.createElement('button');
     close.textContent = 'Close';
     close.style.cssText = `
       background:#999;color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;
     `;
-    buttons.appendChild(submit);
     buttons.appendChild(close);
 
     box.appendChild(title);
     box.appendChild(question);
-    box.appendChild(input);
+    box.appendChild(optionsWrap);
     box.appendChild(feedback);
     box.appendChild(buttons);
     o.appendChild(box);
     document.body.appendChild(o);
 
-    return { root: o, question, input, feedback, submit, close };
+    return { root: o, question, optionsWrap, feedback, close };
   }
 
   const riddles = [
     {
       id: 'mirror-wall',
       text: "I show you truth without a sound, your world reversed yet always found. What am I?",
-      answer: ['mirror', 'a mirror'],
+      correct: 'Mirror',
+      options: ['Mirror', 'Window', 'Picture'],
     },
     {
-      id: 'second',
-      text: "I run but never walk, I murmur but never talk. What am I?",
-      answer: ['water', 'a river', 'river'],
+      id: 'train-riddle',
+      text: "To achieve flat shading the normal vectors associated with the vertices of a primitive should\n\nQuestion 4 Select one:",
+      correct: 'b. be normal to the primitive.',
+      options: [
+        'a. point towards the light source.',
+        'b. be normal to the primitive.',
+        'c. point towards the camera.',
+        'd. be normal to the actual surface being modelled.'
+      ],
     },
     {
       id: 'third',
       text: "The more you take, the more you leave behind. What am I?",
-      answer: ['footsteps', 'footstep', 'steps'],
+      correct: 'Footsteps',
+      options: ['Memories', 'Footsteps', 'Breath'],
     },
   ];
 
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   function openQuiz(index) {
+    if (completed.has(index)) return; // already answered, ignore
     if (!overlay) overlay = createOverlay();
-    const { root, question, input, feedback, submit, close } = overlay;
+    const { root, question, optionsWrap, feedback, close } = overlay;
     active = true;
     currentQuizIndex = index;
     root.style.display = 'flex';
 
-    // Disable block pushing while quizzes are active
-    window.LEVEL2_DISABLE_BLOCK_PUSH = true;
+    // Disable gameplay movement updates while quiz is active
+    window.LEVEL2_QUIZ_ACTIVE = true;
+
+    if (!attempted.has(index) && typeof onAttempt === 'function') {
+      attempted.add(index);
+      try { onAttempt(index); } catch (_) {}
+    }
 
     const r = riddles[index];
     question.textContent = r.text;
     feedback.textContent = '';
-    input.value = '';
-    input.focus();
+    optionsWrap.innerHTML = '';
+    const shuffled = shuffle(r.options);
+    shuffled.forEach((opt) => {
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.style.cssText = `
+        text-align:left; width:100%; background:#ffffff; color:#0066cc; border:2px solid #66b3ff;
+        border-radius:8px; padding:10px 12px; cursor:pointer;
+      `;
+      btn.onclick = () => {
+        if (opt.toLowerCase() === r.correct.toLowerCase()) {
+          feedback.style.color = '#2e7d32';
+          feedback.textContent = 'Correct!';
+          completed.add(index);
+          setTimeout(closeQuiz, 600);
+        } else {
+          feedback.style.color = '#c62828';
+          feedback.textContent = 'Not quite. Try another option.';
+        }
+      };
+      optionsWrap.appendChild(btn);
+    });
 
-    function tryAnswer() {
-      const val = (input.value || '').trim().toLowerCase();
-      if (r.answer.includes(val)) {
-        feedback.style.color = '#2e7d32';
-        feedback.textContent = 'Correct!';
-        setTimeout(closeQuiz, 600);
-      } else {
-        feedback.style.color = '#c62828';
-        feedback.textContent = 'Try again.';
-      }
-    }
-
-    submit.onclick = tryAnswer;
     close.onclick = closeQuiz;
-
-    function handleEnter(e) {
-      if (e.key === 'Enter') tryAnswer();
-      if (e.key === 'Escape') closeQuiz();
-    }
-    input.addEventListener('keydown', handleEnter);
 
     function closeQuiz() {
       active = false;
       root.style.display = 'none';
-      window.LEVEL2_DISABLE_BLOCK_PUSH = true; // keep disabled if more quizzes ahead; set false if needed
-      input.removeEventListener('keydown', handleEnter);
+      window.LEVEL2_QUIZ_ACTIVE = false;
     }
+  }
+
+  function ensureHint() {
+    if (hintEl) return;
+    const el = document.createElement('div');
+    el.id = 'quiz-hint';
+    el.textContent = 'Press I to interact';
+    el.style.cssText = `
+      position: fixed;
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 10px 18px; background: rgba(255,255,255,0.85);
+      color: #003d80; border-radius: 10px; font-family: Arial, sans-serif;
+      font-size: 18px; z-index: 1500; display: none; pointer-events: none;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+    `;
+    document.body.appendChild(el);
+    hintEl = el;
+  }
+
+  function nearestZoneDistance() {
+    if (!player || zones.length === 0) return { d: Infinity, zone: null };
+    const p = player.position;
+    let min = Infinity; let best = null;
+    for (const z of zones) {
+      if (completed.has(z.quizIndex)) continue; // skip completed zones
+      const d = distanceXZ(p, z.position);
+      if (d < min) { min = d; best = z; }
+    }
+    return { d: min, zone: best };
   }
 
   // Listen for P only when near any zone
   function handleKey(e) {
-    if (e.key.toLowerCase() !== 'p' || active) return;
+    if (e.key.toLowerCase() !== 'i' || active) return;
     if (!player) return;
-    const p = player.position;
-    for (const z of zones) {
-      const d = distanceXZ(p, z.position);
-      if (d <= z.radius) {
-        e.preventDefault();
-        openQuiz(z.quizIndex);
-        return;
-      }
+    const { d, zone } = nearestZoneDistance();
+    if (zone && d <= zone.radius) {
+      e.preventDefault();
+      openQuiz(zone.quizIndex);
+      return;
     }
   }
 
@@ -182,10 +226,23 @@ export function createLevel2Quizzes({ scene, player, camera }) {
     if (overlay && overlay.root && overlay.root.parentNode) {
       overlay.root.parentNode.removeChild(overlay.root);
     }
+    if (hintEl && hintEl.parentNode) hintEl.parentNode.removeChild(hintEl);
   }
 
-  // No per-frame work needed now; keep for future
-  function update() {}
+  function update() {
+    ensureHint();
+    if (!hintEl) return;
+    if (active || window.LEVEL2_QUIZ_ACTIVE) {
+      hintEl.style.display = 'none';
+      return;
+    }
+    const { d, zone } = nearestZoneDistance();
+    if (zone && d <= zone.radius) {
+      hintEl.style.display = 'block';
+    } else {
+      hintEl.style.display = 'none';
+    }
+  }
 
   return { addZone, update, destroy };
 }

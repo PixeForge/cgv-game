@@ -30,6 +30,8 @@ export class LevelManager {
     };
     this.level2Blocks = null; // Store reference to blocks for updates
     this.adventureTimer = null; // Timer for Level 2
+    this.level2QuizAttempts = 0;
+    this.level2QuizTotal = 3;
   }
 
   async loadLevel(levelNumber) {
@@ -300,7 +302,14 @@ export class LevelManager {
       this.level2Quizzes = createLevel2Quizzes({
         scene: this.currentEnvironment.getScene(),
         player: this.currentEnvironment.getPlayer(),
-        camera: this.camera
+        camera: this.camera,
+        onAttempt: (quizIndex) => {
+          // Only count unique quiz attempts; quiz.js already restricts to first time
+          this.level2QuizAttempts += 1;
+          if (this.adventureTimer && this.adventureTimer.setQuizProgress) {
+            this.adventureTimer.setQuizProgress(this.level2QuizAttempts, this.level2QuizTotal);
+          }
+        }
       });
 
       // Define first quiz zone: by the mirror by the wall
@@ -309,6 +318,15 @@ export class LevelManager {
         position: { x: 20, y: 0, z: 6.2 },
         radius: 3.5,
         quizIndex: 0
+      });
+
+      // Define second quiz zone: near the train
+      // Train GLB starts at x=30 inside its group at z=0 by default
+      this.level2Quizzes.addZone({
+        id: 'quiz-train',
+        position: { x: 30, y: 0, z: 0 },
+        radius: 5.5,
+        quizIndex: 1
       });
 
       // Disable blocks’ P interaction while quizzes are active
@@ -353,6 +371,9 @@ export class LevelManager {
     this.adventureTimer.reset();
     this.adventureTimer.show();
     this.adventureTimer.start();
+    if (this.adventureTimer.setQuizProgress) {
+      this.adventureTimer.setQuizProgress(0, this.level2QuizTotal);
+    }
   
     // Final verification
     console.log("=== LEVEL 2 LOAD COMPLETE ===");
