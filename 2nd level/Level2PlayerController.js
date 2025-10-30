@@ -29,6 +29,9 @@ export class Level2PlayerController {
     this.PLAYER_HALF_WIDTH = 0.5;
     this.PLAYER_HEIGHT = 2.0;
 
+    this.isOnTopOfBlock = false;  // Add this
+     this.currentBlock = null;     // Add this
+
     this.mixer = null; // will be set when animations are initialized
 
     this.init();
@@ -117,7 +120,7 @@ export class Level2PlayerController {
     curr.reset();
 
     if (name === 'running') {
-      curr.setEffectiveTimeScale(0.6);
+      curr.setEffectiveTimeScale(1.2);
     } else {
       curr.setEffectiveTimeScale(1.0);
     }
@@ -224,14 +227,14 @@ export class Level2PlayerController {
     if (this.mixer) this.mixer.update(delta);
 
     // Update environment moving parts (blocks) first so collisions use up-to-date positions
-    if (this.environment && typeof this.environment.updateBlocks === 'function') {
-      try {
-        this.environment.updateBlocks(delta, elapsedTime);
-      } catch (e) {
-        // ignore errors from environment updateBlocks to avoid breaking player update loop
-        // console.warn('updateBlocks error', e);
-      }
-    }
+    // if (this.environment && typeof this.environment.updateBlocks === 'function') {
+    //   try {
+    //     this.environment.updateBlocks(delta, elapsedTime);
+    //   } catch (e) {
+    //     // ignore errors from environment updateBlocks to avoid breaking player update loop
+    //     // console.warn('updateBlocks error', e);
+    //   }
+    // }
 
     this.updatePlayer(delta);
     this.updateCamera();
@@ -239,153 +242,172 @@ export class Level2PlayerController {
 
   // Replace your entire updatePlayer method with this:
 
-updatePlayer(delta) {
-  const player = this.environment.getPlayer();
-  if (!player) return;
-
-  const speed = 3;
-  const move = new THREE.Vector3();
-
-  if (this.keys['KeyW']) move.z -= 1;
-  if (this.keys['KeyS']) move.z += 1;
-  if (this.keys['KeyA']) move.x -= 1;
-  if (this.keys['KeyD']) move.x += 1;
-
-  const isMoving = move.lengthSq() > 0;
-
-  // --- SIMPLIFIED COLLISION SYSTEM ---
-  const collidables = this.environment.getCollidables();
-
-  // Calculate movement direction
-  let movement = new THREE.Vector3();
-  if (isMoving) {
-    move.normalize();
-    const forward = new THREE.Vector3(Math.sin(this.cameraAngleX), 0, Math.cos(this.cameraAngleX));
-    const right = new THREE.Vector3(forward.z, 0, -forward.x);
-
-    if (this.firstPerson) {
-      movement.addScaledVector(forward, -move.z);
-      movement.addScaledVector(right, -move.x);
+  updatePlayer(delta) {
+    const player = this.environment.getPlayer();
+    if (!player) return;
+  
+    const speed = 3;
+    const move = new THREE.Vector3();
+  
+    if (this.keys['KeyW']) move.z -= 1;
+    if (this.keys['KeyS']) move.z += 1;
+    if (this.keys['KeyA']) move.x -= 1;
+    if (this.keys['KeyD']) move.x += 1;
+  
+    const isMoving = move.lengthSq() > 0;
+    const collidables = this.environment.getCollidables();
+  
+    // STEP 1: Build movement vector
+    let movement = new THREE.Vector3();
+    if (isMoving) {
+      move.normalize();
+      const forward = new THREE.Vector3(Math.sin(this.cameraAngleX), 0, Math.cos(this.cameraAngleX));
+      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  
+      if (this.firstPerson) {
+        movement.addScaledVector(forward, -move.z);
+        movement.addScaledVector(right, -move.x);
+      } else {
+        movement.addScaledVector(forward, move.z);
+        movement.addScaledVector(right, move.x);
+      }
+  
+      movement.setY(0);
+      movement.normalize().multiplyScalar(speed * delta);
+    }
+  
+    // STEP 2: Apply gravity first
+    this.velocityY -= 20 * delta;
+    player.position.y += this.velocityY * delta;
+  
+    // STEP 3: Ground detection - find what we're standing on
+    let groundY = -Infinity;
+    this.isOnTopOfBlock = false;
+    this.currentBlock = null;
+  
+    for (const obj of collidables) {
+      if (obj.userData?.collidable === false) continue;
+  
+      const objBox = new THREE.Box3().setFromObject(obj);
+      
+      // Check horizontal alignment
+      const horizontallyAligned =
+        player.position.x + this.PLAYER_HALF_WIDTH > objBox.min.x &&
+        player.position.x - this.PLAYER_HALF_WIDTH < objBox.max.x &&
+        player.position.z + this.PLAYER_HALF_WIDTH > objBox.min.z &&
+        player.position.z - this.PLAYER_HALF_WIDTH < objBox.max.z;
+  
+      if (!horizontallyAligned) continue;
+  
+      const blockTop = objBox.max.y;
+      const playerBottom = player.position.y; // Player's bottom is at position.y
+      const distance = playerBottom - blockTop;
+  
+      // Check if we're standing on this object
+      if (distance >= -0.5 && distance <= 0.1) {
+        if (blockTop > groundY) {
+          groundY = blockTop;
+          this.isOnTopOfBlock = (obj.userData?.isBlock || obj.userData?.isMovingToyBlock);
+          this.currentBlock = obj;
+        }
+      }
+    }
+  
+    // STEP 4: Apply ground positioning
+    if (groundY > -Infinity && player.position.y <= groundY + 0.1) {
+      player.position.y = groundY + 0.02; // Small offset to prevent sinking
+      this.velocityY = 0;
+      this.onGround = true;
+    } else if (!this.isOnTopOfBlock && player.position.y <= 0.05) {
+      player.position.y = 0;
+      this.velocityY = 0;
+      this.onGround = true;
     } else {
-      movement.addScaledVector(forward, move.z);
-      movement.addScaledVector(right, move.x);
+      this.onGround = false;
     }
-
-    movement.setY(0);
-    movement.normalize().multiplyScalar(speed * delta);
-  }
-
-  // --- STEP 1: Apply horizontal movement with collision detection ---
-  const newPos = new THREE.Vector3(
-    player.position.x + movement.x,
-    player.position.y,
-    player.position.z + movement.z
-  );
-
-  // Create player collision box at new position
-  const playerBox = new THREE.Box3(
-    new THREE.Vector3(
-      newPos.x - this.PLAYER_HALF_WIDTH,
-      newPos.y,
-      newPos.z - this.PLAYER_HALF_WIDTH
-    ),
-    new THREE.Vector3(
-      newPos.x + this.PLAYER_HALF_WIDTH,
-      newPos.y + this.PLAYER_HEIGHT,
-      newPos.z + this.PLAYER_HALF_WIDTH
-    )
-  );
-
-  // Check for collisions at new position
-  let canMove = true;
-  for (const obj of collidables) {
-    const objBox = new THREE.Box3().setFromObject(obj);
-    
-    if (playerBox.intersectsBox(objBox)) {
-      canMove = false;
-      break;
+  
+    // STEP 5: Horizontal movement with simplified collision detection
+    if (movement.lengthSq() > 0) {
+      const newPos = new THREE.Vector3(
+        player.position.x + movement.x,
+        player.position.y,
+        player.position.z + movement.z
+      );
+  
+      let canMove = true;
+      
+      // Check for collisions, but skip blocks we're standing on
+      for (const obj of collidables) {
+        if (obj.userData?.collidable === false) continue;
+        
+        // Skip the block we're currently standing on
+        if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
+  
+        const objBox = new THREE.Box3().setFromObject(obj);
+        const playerBox = new THREE.Box3(
+          new THREE.Vector3(
+            newPos.x - this.PLAYER_HALF_WIDTH,
+            newPos.y, // Player bottom at ground level
+            newPos.z - this.PLAYER_HALF_WIDTH
+          ),
+          new THREE.Vector3(
+            newPos.x + this.PLAYER_HALF_WIDTH,
+            newPos.y + this.PLAYER_HEIGHT, // Player top
+            newPos.z + this.PLAYER_HALF_WIDTH
+          )
+        );
+  
+        // Only check collision if we're not clearly above the object
+        const playerBottom = playerBox.min.y;
+        const objectTop = objBox.max.y;
+        
+        // If player is above the object, allow movement
+        if (playerBottom > objectTop + 0.1) {
+          continue;
+        }
+  
+        if (playerBox.intersectsBox(objBox)) {
+          canMove = false;
+          break;
+        }
+      }
+  
+      if (canMove) {
+        player.position.x = newPos.x;
+        player.position.z = newPos.z;
+      }
+    }
+  
+    // STEP 6: Move with block if standing on a moving one
+    if (this.isOnTopOfBlock && this.currentBlock && this.currentBlock.userData?.isMovingToyBlock) {
+      player.position.x += this.currentBlock.userData.velocity.x * delta;
+      player.position.z += this.currentBlock.userData.velocity.z * delta;
+    }
+  
+    // STEP 7: Room bounds
+    const roomBox = this.environment.getRoomBounds();
+    if (roomBox) {
+      const margin = this.PLAYER_HALF_WIDTH + 0.05;
+      player.position.x = Math.max(roomBox.min.x + margin, Math.min(roomBox.max.x - margin, player.position.x));
+      player.position.z = Math.max(roomBox.min.z + margin, Math.min(roomBox.max.z - margin, player.position.z));
+    }
+  
+    // STEP 8: Animation state
+    if (this.onGround) {
+      if (isMoving) this.playBaseAction('running');
+      else this.playBaseAction('idle');
+    } else {
+      if (!this.overlayPlaying) {
+        this.playOverlayAction('jumping', { fadeIn: 0.08, fadeOut: 0.12 });
+      }
+    }
+  
+    // STEP 9: Rotate to face movement
+    if (isMoving && movement.lengthSq() > 0) {
+      const dir = new THREE.Vector3(movement.x, 0, movement.z).normalize();
+      player.rotation.y = Math.atan2(dir.x, dir.z);
     }
   }
-
-  // Apply movement if no collision
-  if (canMove) {
-    player.position.x = newPos.x;
-    player.position.z = newPos.z;
-  }
-
-  // --- STEP 2: Apply gravity and vertical collision ---
-  this.velocityY -= 20 * delta;
-  player.position.y += this.velocityY * delta;
-
-  // Create player box at current position for ground detection
-  const currentPlayerBox = new THREE.Box3(
-    new THREE.Vector3(
-      player.position.x - this.PLAYER_HALF_WIDTH,
-      player.position.y,
-      player.position.z - this.PLAYER_HALF_WIDTH
-    ),
-    new THREE.Vector3(
-      player.position.x + this.PLAYER_HALF_WIDTH,
-      player.position.y + this.PLAYER_HEIGHT,
-      player.position.z + this.PLAYER_HALF_WIDTH
-    )
-  );
-
-  // Find the highest ground surface under the player
-  let highestGround = -Infinity;
-  let isOnGround = false;
-
-  for (const obj of collidables) {
-    const objBox = new THREE.Box3().setFromObject(obj);
-    
-    // Check if player is above this object and close to its top surface
-    const isAboveObject = 
-      currentPlayerBox.min.x < objBox.max.x &&
-      currentPlayerBox.max.x > objBox.min.x &&
-      currentPlayerBox.min.z < objBox.max.z &&
-      currentPlayerBox.max.z > objBox.min.z &&
-      currentPlayerBox.min.y >= objBox.max.y - 0.1 && // Player bottom is near object top
-      currentPlayerBox.min.y <= objBox.max.y + 0.5;   // But not too far above
-
-    if (isAboveObject) {
-      highestGround = Math.max(highestGround, objBox.max.y);
-      isOnGround = true;
-    }
-  }
-
-  // Apply ground collision
-  if (isOnGround && player.position.y <= highestGround + 0.1) {
-    player.position.y = highestGround;
-    this.velocityY = 0;
-    this.onGround = true;
-  } else if (player.position.y <= 0.1) {
-    // Fallback to floor level
-    player.position.y = 0;
-    this.velocityY = 0;
-    this.onGround = true;
-  } else {
-    this.onGround = false;
-  }
-
-  // --- STEP 3: Room bounds collision ---
-  const roomBox = this.environment.getRoomBounds();
-  if (roomBox) {
-    const margin = this.PLAYER_HALF_WIDTH + 0.05;
-    player.position.x = Math.max(roomBox.min.x + margin, Math.min(roomBox.max.x - margin, player.position.x));
-    player.position.z = Math.max(roomBox.min.z + margin, Math.min(roomBox.max.z - margin, player.position.z));
-  }
-
-  // --- STEP 4: Animations & rotation ---
-  if (this.onGround) {
-    if (isMoving) this.playBaseAction('running');
-    else this.playBaseAction('idle');
-  }
-
-  if (isMoving && movement.lengthSq() > 0) {
-    const dir = new THREE.Vector3(movement.x, 0, movement.z).normalize();
-    player.rotation.y = Math.atan2(dir.x, dir.z);
-  }
-}
 
   updateCamera() {
     const player = this.environment.getPlayer();

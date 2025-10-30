@@ -39,6 +39,8 @@ export function createInteractiveToyBlocks(Scene, camera, player, renderer) {
     block.userData = {
       velocity: new THREE.Vector3(),
       pushing: false,
+      isBlock: true, // ADD THIS LINE
+      isMovingToyBlock: true // ADD THIS LINE
     };
 
     Scene.add(block);
@@ -108,52 +110,60 @@ export function createInteractiveToyBlocks(Scene, camera, player, renderer) {
   }
 
   // --- Main update ---
-  function update(delta, elapsedTime) {
-    flashTime += delta * 2;
-    const glow = (Math.sin(flashTime) + 1) / 2;
+  // --- Main update ---
+function update(delta, elapsedTime) {
+  flashTime += delta * 2;
+  const glow = (Math.sin(flashTime) + 1) / 2;
 
-    const nearest = getClosestBlock();
-    const playerPos = player?.position ?? new THREE.Vector3();
+  const nearest = getClosestBlock();
+  const playerPos = player?.position ?? new THREE.Vector3();
 
-    blocks.forEach((block) => {
-      const dist = block.position.distanceTo(playerPos);
-      const light = block.children[0];
+  let playerIsNearAnyBlock = false;
 
-      // Only glow if the block is close enough
-      if (dist < interactionDistance) {
-        const intensity = glow * 1.5;
-        block.material.emissiveIntensity = intensity;
-        if (light?.isPointLight) light.intensity = glow * 1.2;
-      } else {
-        block.material.emissiveIntensity = 0.0;
-        if (light?.isPointLight) light.intensity = 0.0;
-      }
-    });
+  blocks.forEach((block) => {
+    const dist = block.position.distanceTo(playerPos);
+    const light = block.children[0];
 
-    if (nearest) {
-      popup.style.display = "block";
-
-      // Toggle push mode on P
-      if (keys["p"]) {
-        nearest.userData.pushing = !nearest.userData.pushing;
-        keys["p"] = false; // prevent rapid toggles
-      }
-
-      // If currently pushing, move in player’s facing direction
-      if (nearest.userData.pushing) {
-        const dir = new THREE.Vector3();
-        camera.getWorldDirection(dir);
-        dir.y = 0;
-        dir.normalize();
-        nearest.userData.velocity.copy(dir.multiplyScalar(2.5));
-      }
+    // Only glow if the block is close enough
+    if (dist < interactionDistance) {
+      const intensity = glow * 1.5;
+      block.material.emissiveIntensity = intensity;
+      if (light?.isPointLight) light.intensity = glow * 1.2;
+      playerIsNearAnyBlock = true; // Player is near at least one block
     } else {
-      popup.style.display = "none";
+      block.material.emissiveIntensity = 0.0;
+      if (light?.isPointLight) light.intensity = 0.0;
+    }
+  });
+
+  // Only show popup if player is actually near a block
+  if (playerIsNearAnyBlock && nearest) {
+    popup.style.display = "block";
+
+    // Toggle push mode on P
+    if (keys["p"]) {
+      nearest.userData.pushing = !nearest.userData.pushing;
+      keys["p"] = false; // prevent rapid toggles
     }
 
-    applyPhysics(delta);
-    renderer.render(Scene, camera);
+    // If currently pushing, move in player's facing direction
+    if (nearest.userData.pushing) {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      dir.y = 0;
+      dir.normalize();
+      nearest.userData.velocity.copy(dir.multiplyScalar(2.5));
+    }
+  } else {
+    popup.style.display = "none";
+    // Also make sure to turn off pushing if player moves away
+    if (nearest && nearest.userData.pushing) {
+      nearest.userData.pushing = false;
+    }
   }
+
+  applyPhysics(delta);
+}
 
   return { blocks, update };
 }

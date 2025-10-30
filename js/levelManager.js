@@ -12,6 +12,8 @@ import { train } from "../2nd level/terrain.js";
 import { createWall } from "../2nd level/terrain.js";
 import { createReflectorMirror } from "../2nd level/reflectorMirror.js";
 import { createAdventureTimer } from "../2nd level/Level2Timer.js";
+import { createKey, setupKeyInteraction } from "../2nd level/key.js";
+import { MKChaser } from "../2nd level/mkChaser.js";
 
 export class LevelManager {
   constructor(renderer, camera, playerController) {
@@ -97,12 +99,73 @@ export class LevelManager {
     // Bedroom Scene
     this.currentEnvironment = new Environment();
     this.playerController.environment = this.currentEnvironment;
-
+  
     // Load player
     const gltf = await this.currentEnvironment.loadPlayerModel();
     this.playerController.setupAnimations(gltf);
+  
+    // Load the main bedroom FIRST to get proper room bounds
+    const { roomGroup, collidables, roomBox } = await createChildBedroom({
+      scene: this.currentEnvironment.getScene(),
+      THREE: THREE,
+      loader: new GLTFLoader(),
+      url: "./models/Stewie.glb",
+    });
+  
+    // Add bedroom collidables
+    this.currentEnvironment.addCollidables(collidables);
+    this.currentEnvironment.setRoomBounds(roomBox);
+    console.log(`Added ${collidables.length} bedroom collidables`);
+  
+    // POSITION PLAYER FIRST - before loading blocks and other objects
+    const player = this.currentEnvironment.getPlayer();
+    if (player) {
+      // Get room center and size for proper positioning
+      const roomCenter = new THREE.Vector3();
+      roomBox.getCenter(roomCenter);
+      const roomSize = new THREE.Vector3();
+      roomBox.getSize(roomSize);
+      
+      // Position player safely inside the bedroom
+      // Use fixed coordinates that are known to be inside the bedroom
+      player.position.set(
+        roomCenter.x - 5,  // Move left from center
+        roomBox.min.y + 1.0, // Start above floor
+        roomCenter.z + 25   // Move toward camera from center
+      );
+      
+      console.log('Player positioned at:', player.position);
+      console.log('Room bounds:', {
+        min: `(${roomBox.min.x.toFixed(2)}, ${roomBox.min.y.toFixed(2)}, ${roomBox.min.z.toFixed(2)})`,
+        max: `(${roomBox.max.x.toFixed(2)}, ${roomBox.max.y.toFixed(2)}, ${roomBox.max.z.toFixed(2)})`,
+        center: `(${roomCenter.x.toFixed(2)}, ${roomCenter.y.toFixed(2)}, ${roomCenter.z.toFixed(2)})`
+      });
+    }
 
-    // Load bedroom terrain and get blocks
+    // ADD KEY TO THE SCENE - FIXED POSITION
+    try {
+      console.log('Loading key...');
+      const keyResult = await createKey(
+        this.currentEnvironment.getScene(),
+        new GLTFLoader(),
+        { x: 0, y: 2, z: 0 } // Try a more visible position first
+      );
+      
+      this.level2Key = keyResult.keyObject;
+      
+      // Set up key interaction
+      this.keyInteraction = setupKeyInteraction(
+        this.level2Key,
+        player,
+        () => this.onKeyCollected()
+      );
+      
+      console.log('✅ Key successfully added to Level 2 at position:', this.level2Key.position);
+    } catch (error) {
+      console.error('❌ Could not load key model:', error);
+    }
+  
+    // NOW load bedroom terrain and get blocks (after player is positioned)
     const terrainData = train(
       this.currentEnvironment.getScene(),
       this.camera,
@@ -110,107 +173,154 @@ export class LevelManager {
       this.renderer
     );
 
+    // ADD KEY TO THE SCENE
+    try {
+      const keyResult = await createKey(
+        this.currentEnvironment.getScene(),
+        new GLTFLoader(),
+        { x: 20, y: 3, z: -15 } // Position the key - adjust as needed
+      );
+      
+      this.level2Key = keyResult.keyObject;
+      
+      // Set up key interaction
+      this.keyInteraction = setupKeyInteraction(
+        this.level2Key,
+        player,
+        () => this.onKeyCollected() // Callback when key is collected
+      );
+      
+      console.log('Key added to Level 2');
+    } catch (error) {
+      console.warn('Could not load key model:', error);
+    }
+  
     // Store blocks reference for updates
     this.level2Blocks = terrainData.blocks;
-
-    // Add blocks as collidables - FIXED APPROACH
+  
+    // DEBUG: Check what we're getting from terrain data
+    console.log('Terrain data received:', terrainData);
+    console.log('Blocks array:', this.level2Blocks);
+    console.log('Blocks count:', this.level2Blocks?.length);
+  
+    // FIXED: Add blocks as collidables with proper identification
     if (this.level2Blocks && Array.isArray(this.level2Blocks)) {
-      // Add each block individually as a collidable
+      // First, mark all blocks with identification flags
       this.level2Blocks.forEach(block => {
-        this.currentEnvironment.addCollidables([block]);
+        if (!block.userData) block.userData = {};
+        block.userData.isBlock = true;
+        block.userData.isMovingToyBlock = true;
+        block.userData.collidable = true;
       });
-      console.log(`Added ${this.level2Blocks.length} blocks as collidables`);
+  
+      // Clear any previous blocks to avoid duplicates
+      const currentCollidables = this.currentEnvironment.getCollidables();
+      const nonBlockCollidables = currentCollidables.filter(obj => !obj.userData?.isBlock);
+      this.currentEnvironment.collidables = nonBlockCollidables;
+      
+      // Add all blocks to collidables
+      this.currentEnvironment.addCollidables(this.level2Blocks);
+      console.log(`Successfully added ${this.level2Blocks.length} blocks as collidables`);
     }
-
-    // Add wall as collidable
+  
+    // Add wall as collidable if it exists
     if (terrainData.wall) {
+      if (!terrainData.wall.userData) terrainData.wall.userData = {};
+      terrainData.wall.userData.isWall = true;
+      terrainData.wall.userData.collidable = true;
       this.currentEnvironment.addCollidables([terrainData.wall]);
+      console.log('Added wall as collidable');
     }
-
+  
     // Attach the update function to environment
     if (terrainData.update) {
       this.currentEnvironment.updateBlocks = terrainData.update;
+      console.log('Block update function attached to environment');
     }
-
-    // Load the main bedroom
-    const { roomGroup, collidables, roomBox } = await createChildBedroom({
-      scene: this.currentEnvironment.getScene(),
-      THREE: THREE,
-      loader: new GLTFLoader(),
-      url: "./models/Stewie.glb",
-    });
-
-    // Add bedroom collidables
-    this.currentEnvironment.addCollidables(collidables);
-    this.currentEnvironment.setRoomBounds(roomBox);
-
-    // Position player
-    const player = this.currentEnvironment.getPlayer();
-    if (player) {
-      const center = roomBox.getCenter(new THREE.Vector3());
-      player.position.set(
-        center.x,
-        roomBox.min.y + 0.5,
-        center.z + 15
-      );
-    }
-
+  
     // Set camera distance
     this.playerController.cameraDistance = Math.min(
       this.playerController.cameraDistance,
       Math.max(3, roomBox.getSize(new THREE.Vector3()).length() * 0.08)
     );
-
+  
     // Add train
-    const { trainGroup } = await addTrain({
-      scene: this.currentEnvironment.getScene(),
-      loader: new GLTFLoader(),
-      makeCollidable: true,
-    });
-
-    // Add train collidables
-    const trainCollidables = [];
-    trainGroup.traverse((child) => {
-      if (child.isMesh && child.visible && child.geometry) {
-        trainCollidables.push(child);
+    try {
+      const { trainGroup, collidables: trainCollidables } = await addTrain({
+        scene: this.currentEnvironment.getScene(),
+        loader: new GLTFLoader(),
+        makeCollidable: true,
+      });
+  
+      // Add train collidables
+      if (trainCollidables && trainCollidables.length > 0) {
+        this.currentEnvironment.addCollidables(trainCollidables);
+        console.log(`Added ${trainCollidables.length} train collidables from returned array`);
+      } else {
+        // Fallback: traverse the train group to find collidables
+        const fallbackTrainCollidables = [];
+        trainGroup.traverse((child) => {
+          if (child.isMesh && child.visible && child.geometry) {
+            if (!child.userData) child.userData = {};
+            child.userData.isTrain = true;
+            child.userData.collidable = true;
+            fallbackTrainCollidables.push(child);
+          }
+        });
+        this.currentEnvironment.addCollidables(fallbackTrainCollidables);
+        console.log(`Added ${fallbackTrainCollidables.length} train collidables from traversal`);
       }
-    });
-    this.currentEnvironment.addCollidables(trainCollidables);
-
-    /*
-
-    // Add mirror
-    const { mirrorGroup } = await addMirror({
-      scene: this.currentEnvironment.getScene(),
-      loader: new GLTFLoader(),
-      url: "./models/mirror_a.glb",
-    });
-
-    // Add mirror collidables
-    const mirrorCollidables = [];
-    mirrorGroup.traverse((child) => {
-      if (child.isMesh && child.visible && child.geometry) {
-        mirrorCollidables.push(child);
-      }
-    });
-    this.currentEnvironment.addCollidables(mirrorCollidables);
-    */
-
+    } catch (error) {
+      console.warn('Failed to load train:', error);
+    }
+  
     // Add reflective mirror using Reflector class
-    const reflectorMirror = createReflectorMirror({
-      scene: this.currentEnvironment.getScene(),
-      width: 3,  // Width of the mirror
-      height: 8, // Height of the mirror
-      position: { x: 20, y: 5, z: 6.2 }, // Position it at same location as the model mirror
-      rotation: { x: 0, y: Math.PI, z: 0 }, // Rotate to face the room
-      textureWidth: 512,  // Reduced from 2048 for better performance
-      textureHeight: 512, // Reduced from 2048 for better performance
-      color: 0xcccccc,  // Slightly tinted reflection
-      addFrame: true,
-      frameThickness: 0.3,
-      frameColor: 0x8B4513 // Brown/wood frame
-    });
+    try {
+      const reflectorMirror = createReflectorMirror({
+        scene: this.currentEnvironment.getScene(),
+        width: 3,
+        height: 8,
+        position: { x: 20, y: 5, z: 6.2 },
+        rotation: { x: 0, y: Math.PI, z: 0 },
+        textureWidth: 512,
+        textureHeight: 512,
+        color: 0xcccccc,
+        addFrame: true,
+        frameThickness: 0.3,
+        frameColor: 0x8B4513
+      });
+      console.log('Reflector mirror added successfully');
+    } catch (error) {
+      console.warn('Failed to create reflector mirror:', error);
+    }
 
+    // --- Add MK enemy that chases the player ---
+    // In loadLevel2 method - ensure MKChaser is properly set up
+    // In loadLevel2 method - ensure MKChaser is properly set up
+    try {
+      this.mkChaser = new MKChaser(
+        this.currentEnvironment.getScene(),
+        this.currentEnvironment.getPlayer(),
+        this.currentEnvironment.getRoomBounds()
+      );
+      
+      // Add the enemy model to collidables if needed
+      if (this.mkChaser.model) {
+        this.mkChaser.model.traverse((child) => {
+          if (child.isMesh) {
+            if (!child.userData) child.userData = {};
+            child.userData.isEnemy = true;
+            child.userData.collidable = true;
+          }
+        });
+      }
+      
+      console.log("MK chaser initialized in Level 2");
+    } catch (err) {
+      console.error("Failed to initialize MK chaser:", err);
+    }
+
+  
     // Create and start the adventure timer for Level 2
     if (!this.adventureTimer) {
       this.adventureTimer = createAdventureTimer();
@@ -218,8 +328,55 @@ export class LevelManager {
     this.adventureTimer.reset();
     this.adventureTimer.show();
     this.adventureTimer.start();
+  
+    // Final verification
+    console.log("=== LEVEL 2 LOAD COMPLETE ===");
+    console.log("Level 2 (Bedroom) loaded with:", {
+      blocks: this.level2Blocks?.length || 0,
+      totalCollidables: this.currentEnvironment.getCollidables().length,
+      blocksInCollidables: this.currentEnvironment.getCollidables().filter(obj => obj.userData?.isBlock).length,
+      hasUpdateFunction: !!this.currentEnvironment.updateBlocks,
+      playerPosition: player ? `(${player.position.x.toFixed(2)}, ${player.position.y.toFixed(2)}, ${player.position.z.toFixed(2)})` : 'No player'
+    });
+  
+    return true;
+  }
 
-    console.log("Level 2 (Bedroom) loaded with block collision support and reflector mirror");
+  // In LevelManager class - add this method
+  checkMKCollisions() {
+    if (!this.mkChaser || !this.mkChaser.model || !this.currentEnvironment) return;
+    
+    const player = this.currentEnvironment.getPlayer();
+    if (!player) return;
+    
+    const mkPos = this.mkChaser.model.position;
+    const playerPos = player.position;
+    const distance = mkPos.distanceTo(playerPos);
+    
+    // Only damage player if enemy is attacking and close enough
+    if (this.mkChaser.isAttacking && distance < 2.0) {
+      // Add your player damage logic here
+      console.log("MK attacks player! Distance:", distance);
+      
+      // Example damage system - you'll need to implement this based on your player health system
+      if (player.takeDamage) {
+        player.takeDamage(1);
+      }
+      
+      // Optional: Add visual/audio feedback
+      this.createDamageFeedback();
+    }
+  }
+
+  createDamageFeedback() {
+    // Add screen flash, sound, or other feedback when player takes damage
+    console.log("Player takes damage!");
+    
+    // Example: Screen flash effect
+    document.body.style.backgroundColor = 'red';
+    setTimeout(() => {
+      document.body.style.backgroundColor = '';
+    }, 100);
   }
 
   async loadLevel3() {
@@ -241,6 +398,9 @@ export class LevelManager {
   update(delta, elapsedTime) {
     if (this.currentLevel === 2 && this.currentEnvironment && this.currentEnvironment.updateBlocks) {
       this.currentEnvironment.updateBlocks(delta, elapsedTime);
+
+      // Add collision detection for MK enemy
+      this.checkMKCollisions();
     }
   }
 

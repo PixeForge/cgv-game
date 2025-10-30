@@ -1,6 +1,6 @@
 // main.js
 import * as THREE from "three";
-import { PlayerController } from "./js/playerController.js";
+import { Level2PlayerController } from "./2nd level/Level2PlayerController.js";
 import { LevelManager } from "./js/levelManager.js";
 import { createPauseMenu } from "./2nd level/pauseMenu.js";
 
@@ -9,9 +9,10 @@ class Game {
     this.clock = new THREE.Clock();
     this.camera = null;
     this.renderer = null;
-    this.playerController = null;
+    this.Level2PlayerController = null;
     this.levelManager = null;
     this.pauseMenu = null;
+    this.isPaused = false;
 
     this.init();
   }
@@ -33,7 +34,7 @@ class Game {
     );
 
     // Create player controller (will be initialized with environment later)
-    this.playerController = new PlayerController(
+    this.Level2PlayerController = new Level2PlayerController(
       null,
       this.camera,
       this.renderer
@@ -43,7 +44,7 @@ class Game {
     this.levelManager = new LevelManager(
       this.renderer,
       this.camera,
-      this.playerController
+      this.Level2PlayerController
     );
 
     // Setup UI
@@ -52,12 +53,17 @@ class Game {
     // Initialize pause menu
     this.pauseMenu = createPauseMenu();
     
-    // Optional: Stop clock when paused, resume when unpaused
+    // Handle pause state properly
     this.pauseMenu.onPause(() => {
-      this.clock.stop();
+      this.isPaused = true;
+      this.clock.stop(); // Stop the clock to freeze delta time
     });
+    
     this.pauseMenu.onResume(() => {
-      this.clock.start();
+      this.isPaused = false;
+      this.clock.start(); // Restart the clock
+      // Reset the clock to avoid large delta values after pause
+      this.clock.getDelta();
     });
 
     // Load initial level
@@ -65,6 +71,16 @@ class Game {
 
     // Handle window resize
     window.addEventListener("resize", () => this.onWindowResize());
+
+    // Handle visibility change (tab switching)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.clock.stop();
+      } else {
+        this.clock.start();
+        this.clock.getDelta(); // Reset delta
+      }
+    });
 
     // Start animation loop
     this.animate();
@@ -145,37 +161,47 @@ class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  // In main.js - fix the animate method
-animate() {
-  requestAnimationFrame(() => this.animate());
+  animate() {
+    requestAnimationFrame(() => this.animate());
 
-  const environment = this.levelManager.getCurrentEnvironment();
+    const environment = this.levelManager.getCurrentEnvironment();
 
-  // Always render scene, but skip updates if paused
-  if (environment) {
-    // Only update game logic if not paused
-    if (!this.pauseMenu || !this.pauseMenu.isPaused()) {
-      const delta = this.clock.getDelta();
+    if (environment) {
+      // Get delta time - if paused, use 0 to freeze animations
+      const delta = this.isPaused ? 0 : this.clock.getDelta();
       const elapsedTime = this.clock.getElapsedTime();
 
-      // --- CRITICAL FIX: Only update blocks ONCE per frame ---
-      // Remove the environment.updateBlocks call here since it's already called in PlayerController
-      
-      // Update environment
-      if (environment.update && typeof environment.update === 'function') {
-        environment.update(delta);
+      // Only update game logic if not paused
+      if (!this.isPaused) {
+        // Update level manager (this handles block updates)
+        this.levelManager.update(delta, elapsedTime);
+
+        // Update player controller
+        if (this.Level2PlayerController) {
+          this.Level2PlayerController.update(delta, elapsedTime);
+        }
+
+        // Update MKChaser (animations will use delta=0 when paused)
+        if (this.levelManager.mkChaser) {
+          this.levelManager.mkChaser.update();
+        }
+      } else {
+        // When paused, we still need to update animations with delta=0
+        // This keeps them in their current state without progressing
+        if (this.levelManager.mkChaser && this.levelManager.mkChaser.mixer) {
+          this.levelManager.mkChaser.mixer.update(0);
+        }
+        
+        // Also update player animations with delta=0 when paused
+        if (this.Level2PlayerController && this.Level2PlayerController.mixer) {
+          this.Level2PlayerController.mixer.update(0);
+        }
       }
 
-      // Update player controller (this includes block updates)
-      if (this.playerController) {
-        this.playerController.update(delta, elapsedTime);
-      }
+      // Always render scene (even when paused)
+      this.renderer.render(environment.getScene(), this.camera);
     }
-
-    // Render scene (even when paused to show the scene)
-    this.renderer.render(environment.getScene(), this.camera);
   }
-}
 }
 
 // Start the game when DOM is ready
