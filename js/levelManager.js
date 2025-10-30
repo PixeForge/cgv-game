@@ -35,10 +35,20 @@ export class LevelManager {
     this.level2QuizTotal = 2;
     this.level2QuizCompleted = 0;
     this.level2Portal = null;
+    this.level2BgAudio = null;
+    this.level2LoseAudio = null;
   }
 
   handleLevel2Timeout() {
     try {
+      // Stop background music and play lose SFX
+      if (this.level2BgAudio) {
+        try { this.level2BgAudio.pause(); } catch (_) {}
+      }
+      if (this.level2LoseAudio) {
+        try { this.level2LoseAudio.currentTime = 0; this.level2LoseAudio.play().catch(() => {}); } catch (_) {}
+      }
+
       // Show a simple lose overlay
       const overlay = document.createElement('div');
       overlay.id = 'level2-lose-overlay';
@@ -82,6 +92,11 @@ export class LevelManager {
         this.adventureTimer.stop();
         this.adventureTimer.hide();
       }
+    }
+
+    // Stop Level 2 background audio if leaving Level 2
+    if (this.level2BgAudio && levelNumber !== 2) {
+      try { this.level2BgAudio.pause(); this.level2BgAudio.currentTime = 0; } catch (_) {}
     }
 
     // Clean up current level
@@ -138,6 +153,32 @@ export class LevelManager {
     // Bedroom Scene
     this.currentEnvironment = new Environment();
     this.playerController.environment = this.currentEnvironment;
+
+    // --- Level 2 Audio: Background and Lose Sound ---
+    try {
+      if (!this.level2BgAudio) {
+        this.level2BgAudio = new Audio('./sounds/epic-adventure.mp3');
+        this.level2BgAudio.loop = true;
+        this.level2BgAudio.volume = 0.5;
+        // Fallback in case loop fails on some browsers
+        if (!this.level2BgAudio._loopHandlerSet) {
+          this.level2BgAudio.addEventListener('ended', () => {
+            try { this.level2BgAudio.currentTime = 0; this.level2BgAudio.play().catch(() => {}); } catch (_) {}
+          });
+          this.level2BgAudio._loopHandlerSet = true;
+        }
+      }
+      try { this.level2BgAudio.currentTime = 0; } catch (_) {}
+      this.level2BgAudio.play().catch(() => {});
+
+      if (!this.level2LoseAudio) {
+        this.level2LoseAudio = new Audio('./sounds/you-lose-notification.mp3');
+        this.level2LoseAudio.loop = false;
+        this.level2LoseAudio.volume = 0.8;
+      }
+    } catch (e) {
+      console.warn('Audio init failed:', e);
+    }
   
     // Load player
     const gltf = await this.currentEnvironment.loadPlayerModel();
