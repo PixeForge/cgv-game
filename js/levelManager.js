@@ -177,20 +177,22 @@ export class LevelManager {
     console.log("Level 2 (Bedroom) loaded");
   }
 
-  async loadLevel3() {
-    // Clocktower Scene
-    this.currentEnvironment = new ClocktowerEnv();
-    this.playerController.environment = this.currentEnvironment;
+async loadLevel3() {
+  // Clocktower Scene
+  this.currentEnvironment = new ClocktowerEnv();
+  this.playerController.environment = this.currentEnvironment;
 
-    // Load player
-    const gltf = await this.currentEnvironment.loadPlayerModel();
-    this.playerController.setupAnimations(gltf);
+  // Load player
+  const gltf = await this.currentEnvironment.loadPlayerModel();
+  this.playerController.setupAnimations(gltf);
 
-    // Reset camera
-    this.playerController.cameraDistance = 10;
+  // Reset camera
+  this.playerController.cameraDistance = 10;
 
-    console.log("Level 3 (Clocktower) loaded");
-  }
+  console.log("Level 3 (Clocktower) loaded");
+  
+  // Note: Soundtrack will be loaded by main.js after level loads
+}
 
   getCurrentEnvironment() {
     return this.currentEnvironment;

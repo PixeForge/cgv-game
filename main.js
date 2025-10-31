@@ -1,6 +1,6 @@
-// Use the ES module build from a CDN
+// main.js
 import * as THREE from 'three';
-import { Environment } from './3rd level/clocktower.js';
+import { LevelManager } from './js/levelManager.js';
 import { PlayerController3 } from './3rd level/playerController3.js';
 
 class Game {
@@ -87,9 +87,26 @@ class Game {
 
       button.addEventListener('click', async () => {
         try {
+          // Hide level selection UI
+          uiContainer.style.display = "none";
+          
+          // Load the level
           await this.levelManager.loadLevel(i);
+          
+          // Load soundtrack for level 3
+          if (i === 3) {
+            const env = this.levelManager.getCurrentEnvironment();
+            if (env && env.loadSoundtrack) {
+              await env.loadSoundtrack('./3rd level/public/clocktower_soundtrack.mp3');
+              env.playSoundtrack();
+            }
+          }
+          
+          // Show pause button
+          this.showPauseButton();
         } catch (error) {
           console.error(`Error loading level ${i}:`, error);
+          uiContainer.style.display = "block"; // Show UI again on error
         }
       });
 
@@ -110,6 +127,97 @@ class Game {
     uiContainer.appendChild(controls);
 
     document.body.appendChild(uiContainer);
+  }
+
+  showPauseButton() {
+    // Remove existing pause button if any
+    const existingPause = document.getElementById("pause-ui");
+    if (existingPause) {
+      existingPause.remove();
+    }
+
+    // Create pause button container
+    const pauseContainer = document.createElement("div");
+    pauseContainer.id = "pause-ui";
+    pauseContainer.style.position = "absolute";
+    pauseContainer.style.top = "20px";
+    pauseContainer.style.right = "20px";
+    pauseContainer.style.zIndex = "1000";
+
+    // Pause button
+    const pauseButton = document.createElement("button");
+    pauseButton.textContent = "⏸ Pause";
+    pauseButton.style.padding = "10px 20px";
+    pauseButton.style.cursor = "pointer";
+    pauseButton.style.border = "none";
+    pauseButton.style.borderRadius = "5px";
+    pauseButton.style.backgroundColor = "#FF9800";
+    pauseButton.style.color = "white";
+    pauseButton.style.fontSize = "14px";
+    pauseButton.style.fontWeight = "bold";
+
+    let isPaused = false;
+    pauseButton.addEventListener("click", () => {
+      isPaused = !isPaused;
+      
+      if (isPaused) {
+        pauseButton.textContent = "▶ Resume";
+        pauseButton.style.backgroundColor = "#4CAF50";
+        this.clock.stop();
+        
+        // Pause soundtrack if on level 3
+        const env = this.levelManager.getCurrentEnvironment();
+        if (env && env.pauseSoundtrack) {
+          env.pauseSoundtrack();
+        }
+      } else {
+        pauseButton.textContent = "⏸ Pause";
+        pauseButton.style.backgroundColor = "#FF9800";
+        this.clock.start();
+        
+        // Resume soundtrack if on level 3
+        const env = this.levelManager.getCurrentEnvironment();
+        if (env && env.resumeSoundtrack) {
+          env.resumeSoundtrack();
+        }
+      }
+    });
+
+    pauseContainer.appendChild(pauseButton);
+
+    // Level selector button
+    const levelButton = document.createElement("button");
+    levelButton.textContent = "📋 Change Level";
+    levelButton.style.padding = "10px 20px";
+    levelButton.style.cursor = "pointer";
+    levelButton.style.border = "none";
+    levelButton.style.borderRadius = "5px";
+    levelButton.style.backgroundColor = "#2196F3";
+    levelButton.style.color = "white";
+    levelButton.style.fontSize = "14px";
+    levelButton.style.fontWeight = "bold";
+    levelButton.style.marginLeft = "10px";
+
+    levelButton.addEventListener("click", () => {
+      // Stop soundtrack if on level 3
+      const env = this.levelManager.getCurrentEnvironment();
+      if (env && env.stopSoundtrack) {
+        env.stopSoundtrack();
+      }
+      
+      // Show level selection UI
+      const levelUI = document.getElementById("level-ui");
+      if (levelUI) {
+        levelUI.style.display = "block";
+      }
+      
+      // Hide pause UI
+      pauseContainer.style.display = "none";
+    });
+
+    pauseContainer.appendChild(levelButton);
+
+    document.body.appendChild(pauseContainer);
   }
 
   onWindowResize() {
