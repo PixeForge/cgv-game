@@ -4,7 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GardenScene } from "../1st level/gardenScene.js";
 import { placeModels } from "../1st level/modelPlacer.js";
 import { Environment } from "./environment.js";
-import { Environment as ClocktowerEnv } from "./3rd level/clocktower.js";
+import { Environment as ClocktowerEnv } from "../3rd level/clocktower.js";
 import { createChildBedroom } from "../2nd level/usingmodels.js";
 import { addMirror } from "../2nd level/mirror.js";
 import { addTrain } from "../2nd level/train.js";
