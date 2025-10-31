@@ -1,5 +1,6 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// environment.js
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 export class Environment {
   constructor() {
@@ -7,11 +8,12 @@ export class Environment {
     this.collidables = [];
     this.player = null;
     this.mixer = null;
+    this.roomBounds = null; // THREE.Box3
     this.init();
   }
 
   init() {
-    // Scene
+    // Scene background color
     this.scene.background = new THREE.Color(0xaec6cf);
 
     // Lights
@@ -21,64 +23,41 @@ export class Environment {
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 1);
     dirLight.position.set(5, 10, 7.5);
+    dirLight.castShadow = true;
     this.scene.add(dirLight);
 
-    // Ground
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshPhongMaterial({ color: 0x88c070 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    ground.name = 'ground';
-    this.scene.add(ground);
-
-    this.createObstacles();
+    // NOTE: removed the brown ground mesh here so the room's floor (from GLB)
+    // is used instead. If you want a global ground, re-add it or ensure
+    // your model includes an internal floor.
+    // this.createObstacles();
   }
 
-  createObstacles() {
-    // Jump platforms
-    for (let i = 0; i < 3; i++) {
-      const boxGeo = new THREE.BoxGeometry(3, 1, 3);
-      const boxMat = new THREE.MeshPhongMaterial({ color: 0x8b4513 });
-      const box = new THREE.Mesh(boxGeo, boxMat);
-      box.position.set(i * 6 - 6, 0.5, -10);
-      box.receiveShadow = true;
-      box.castShadow = true;
-      box.name = `platform_${i}`;
-      this.scene.add(box);
-      this.collidables.push(box);
+  addCollidables(collidables = []) {
+    // Accept array of THREE.Object3D (meshes)
+    for (const c of collidables) {
+      if (c && !this.collidables.includes(c)) this.collidables.push(c);
     }
+  }
 
-    // A taller climb wall (mark as climbable)
-    const wallGeo = new THREE.BoxGeometry(4, 6, 1);
-    const wallMat = new THREE.MeshPhongMaterial({ color: 0x4444aa });
-    const wall = new THREE.Mesh(wallGeo, wallMat);
-    wall.position.set(0, 3, -20);
-    wall.name = 'climb_wall';
-    wall.userData.climbable = true;
-    this.scene.add(wall);
-    this.collidables.push(wall);
+  setRoomBounds(box3) {
+    if (box3 && box3.isBox3) this.roomBounds = box3.clone();
+  }
 
-    // A reference cube to jump over
-    const cubeGeo = new THREE.BoxGeometry(2, 2, 2);
-    const cubeMat = new THREE.MeshPhongMaterial({ color: 0xaa3333 });
-    const cube = new THREE.Mesh(cubeGeo, cubeMat);
-    cube.position.set(-5, 1, -5);
-    cube.name = 'red_cube';
-    this.scene.add(cube);
-    this.collidables.push(cube);
+  getRoomBounds() {
+    return this.roomBounds;
   }
 
   loadPlayerModel() {
     return new Promise((resolve, reject) => {
       const loader = new GLTFLoader();
       loader.load(
-        './models/AJ.glb',
+        "./models/AJ.glb",
         (gltf) => {
           this.player = gltf.scene;
           this.player.scale.set(1, 1, 1);
+          // We'll set the player position later (after room loads) if needed.
           this.player.position.set(0, 0, 0);
-          this.player.name = 'player';
+          this.player.name = "player";
           this.scene.add(this.player);
 
           // Animation mixer
