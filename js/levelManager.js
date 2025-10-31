@@ -4,7 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { GardenScene } from "../1st level/gardenScene.js";
 import { placeModels } from "../1st level/modelPlacer.js";
 import { Environment } from "./environment.js";
-import { Environment as ClocktowerEnv } from "./level 3/clocktower.js";
+import { Environment as ClocktowerEnv } from "../3rd level/clocktower.js";
 import { createChildBedroom } from "../2nd level/usingmodels.js";
 import { addMirror } from "../2nd level/mirror.js";
 import { addTrain } from "../2nd level/train.js";
@@ -177,20 +177,22 @@ export class LevelManager {
     console.log("Level 2 (Bedroom) loaded");
   }
 
-  async loadLevel3() {
-    // Clocktower Scene
-    this.currentEnvironment = new ClocktowerEnv();
-    this.playerController.environment = this.currentEnvironment;
+async loadLevel3() {
+  // Clocktower Scene
+  this.currentEnvironment = new ClocktowerEnv();
+  this.playerController.environment = this.currentEnvironment;
 
-    // Load player
-    const gltf = await this.currentEnvironment.loadPlayerModel();
-    this.playerController.setupAnimations(gltf);
+  // Load player
+  const gltf = await this.currentEnvironment.loadPlayerModel();
+  this.playerController.setupAnimations(gltf);
 
-    // Reset camera
-    this.playerController.cameraDistance = 10;
+  // Reset camera
+  this.playerController.cameraDistance = 10;
 
-    console.log("Level 3 (Clocktower) loaded");
-  }
+  console.log("Level 3 (Clocktower) loaded");
+  
+  // Note: Soundtrack will be loaded by main.js after level loads
+}
 
   getCurrentEnvironment() {
     return this.currentEnvironment;
