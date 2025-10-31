@@ -16,20 +16,20 @@ const camera = new THREE.PerspectiveCamera(
   1000
 );
 
-// Initialize environment and player controller
-const environment = new Environment();
-const playerController = new PlayerController3(environment, camera, renderer);
-
-// Load player model and setup animations
-environment.loadPlayerModel()
+//LEVEL 3
+const level3 = new Environment();
+const playerController3 = new PlayerController3(level3, camera, renderer);
+document.addEventListener('click', async () => {
+  await level3.loadSoundtrack('./3rd level/public/clocktower_soundtrack.mp3');
+  level3.playSoundtrack();
+}, { once: true });
+level3.loadPlayerModel()
   .then((gltf) => {
-    playerController.setupAnimations(gltf);
+    playerController3.setupAnimations(gltf);
   })
   .catch((error) => {
     console.error('Error loading player model:', error);
   });
-
-// Handle window resize
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -41,11 +41,11 @@ const clock = new THREE.Clock();
 
 function animate() {
   const delta = clock.getDelta();
-  
-  environment.update(delta);
-  playerController.update(delta);
-  
-  renderer.render(environment.getScene(), camera);
+
+  level3.update(delta);
+  playerController3.update(delta);
+
+  renderer.render(level3.getScene(), camera);
   renderer.setAnimationLoop(animate);
 }
 
