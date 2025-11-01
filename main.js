@@ -2,11 +2,9 @@
 import * as THREE from 'three';
 import { Level1Environment } from "./1st level/core/level1Environment.js"
 import { PlayerController1 } from "./1st level/entities/playerController1.js"
+//import { LevelManager } from './js/levelManager.js';
 import { Environment as ClocktowerEnv } from './3rd level/clocktower.js';
-import { LevelManager } from './js/levelManager.js';
 import { PlayerController3 } from './3rd level/playerController3.js';
-import { PlayerController } from './js/playerController.js';
-import { Environment as ClocktowerEnv } from './3rd level/clocktower.js';
 
 class Game {
   constructor() {
@@ -45,6 +43,9 @@ class Game {
       const levelNumber = e.detail.level;
       // Redirect level 2 to level 3 (skip bedroom)
       if (levelNumber === 2) {
+
+        // change this to load level 2 when it it implemented
+        
         this.loadLevel(3);
       } else {
         this.loadLevel(levelNumber);
@@ -94,6 +95,8 @@ class Game {
         case 1:
           await this.loadLevel1();
           break;
+
+        // add the case for level 2 when implemented
         case 3:
           await this.loadLevel3();
           break;
@@ -218,7 +221,6 @@ class Game {
 
     // Add controls info
     const controls = document.createElement("div");
-    controls.style.color = "white";
     controls.style.marginTop = "20px";
     controls.style.fontSize = "12px";
     controls.innerHTML = `
@@ -235,97 +237,6 @@ class Game {
     document.body.appendChild(uiContainer);
   }
 
-  showPauseButton() {
-    // Remove existing pause button if any
-    const existingPause = document.getElementById("pause-ui");
-    if (existingPause) {
-      existingPause.remove();
-    }
-
-    // Create pause button container
-    const pauseContainer = document.createElement("div");
-    pauseContainer.id = "pause-ui";
-    pauseContainer.style.position = "absolute";
-    pauseContainer.style.top = "20px";
-    pauseContainer.style.right = "20px";
-    pauseContainer.style.zIndex = "1000";
-
-    // Pause button
-    const pauseButton = document.createElement("button");
-    pauseButton.textContent = "⏸ Pause";
-    pauseButton.style.padding = "10px 20px";
-    pauseButton.style.cursor = "pointer";
-    pauseButton.style.border = "none";
-    pauseButton.style.borderRadius = "5px";
-    pauseButton.style.backgroundColor = "#FF9800";
-    pauseButton.style.color = "white";
-    pauseButton.style.fontSize = "14px";
-    pauseButton.style.fontWeight = "bold";
-
-    let isPaused = false;
-    pauseButton.addEventListener("click", () => {
-      isPaused = !isPaused;
-      
-      if (isPaused) {
-        pauseButton.textContent = "▶ Resume";
-        pauseButton.style.backgroundColor = "#4CAF50";
-        this.clock.stop();
-        
-        // Pause soundtrack if on level 3
-        const env = this.levelManager.getCurrentEnvironment();
-        if (env && env.pauseSoundtrack) {
-          env.pauseSoundtrack();
-        }
-      } else {
-        pauseButton.textContent = "⏸ Pause";
-        pauseButton.style.backgroundColor = "#FF9800";
-        this.clock.start();
-        
-        // Resume soundtrack if on level 3
-        const env = this.levelManager.getCurrentEnvironment();
-        if (env && env.resumeSoundtrack) {
-          env.resumeSoundtrack();
-        }
-      }
-    });
-
-    pauseContainer.appendChild(pauseButton);
-
-    // Level selector button
-    const levelButton = document.createElement("button");
-    levelButton.textContent = "📋 Change Level";
-    levelButton.style.padding = "10px 20px";
-    levelButton.style.cursor = "pointer";
-    levelButton.style.border = "none";
-    levelButton.style.borderRadius = "5px";
-    levelButton.style.backgroundColor = "#2196F3";
-    levelButton.style.color = "white";
-    levelButton.style.fontSize = "14px";
-    levelButton.style.fontWeight = "bold";
-    levelButton.style.marginLeft = "10px";
-
-    levelButton.addEventListener("click", () => {
-      // Stop soundtrack if on level 3
-      const env = this.levelManager.getCurrentEnvironment();
-      if (env && env.stopSoundtrack) {
-        env.stopSoundtrack();
-      }
-      
-      // Show level selection UI
-      const levelUI = document.getElementById("level-ui");
-      if (levelUI) {
-        levelUI.style.display = "block";
-      }
-      
-      // Hide pause UI
-      pauseContainer.style.display = "none";
-    });
-
-    pauseContainer.appendChild(levelButton);
-
-    document.body.appendChild(pauseContainer);
-  }
-
   onWindowResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
@@ -339,12 +250,10 @@ class Game {
 
     if (this.currentEnvironment && this.currentPlayerController) {
       // Update environment
-      environment.update(delta);
+      this.currentEnvironment.update(delta);
 
-      // Update the current player controller (switches based on level)
-      if (this.currentPlayerController) {
-        this.currentPlayerController.update(delta);
-      }
+      // Update player controller
+      this.currentPlayerController.update(delta);
 
       // Render scene
       this.renderer.render(this.currentEnvironment.getScene(), this.camera);
