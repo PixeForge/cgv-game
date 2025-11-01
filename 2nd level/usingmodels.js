@@ -58,6 +58,7 @@ export async function createChildBedroom({
         [
           // previous walls
           "Object_6",
+          "Object_2",
           "Object_10",
           "Object_13",
           "Object_22",
@@ -90,14 +91,43 @@ export async function createChildBedroom({
       const matchedNames = [];
 
       room.traverse((child) => {
+        // handle regular meshes and skinned meshes
         if (child.isMesh) {
           // ensure unique material instances so highlighting won't leak
           if (child.material) {
-            child.material = child.material.clone();
+            // clone arrays of materials or single material
+            if (Array.isArray(child.material)) {
+              child.material = child.material.map((m) => (m ? m.clone() : m));
+            } else {
+              child.material = child.material.clone();
+            }
           }
 
+          // Enable shadows for all meshes (skinned or static)
           child.castShadow = true;
           child.receiveShadow = true;
+
+          // If this mesh has textures, mark them sRGB for correct color (common fix for dark textures)
+          try {
+            const mats = Array.isArray(child.material)
+              ? child.material
+              : [child.material];
+            mats.forEach((mat) => {
+              if (!mat) return;
+              // If a color map is present, ensure correct encoding and mark for update
+              if (mat.map) {
+                mat.map.encoding = THREE.sRGBEncoding;
+                mat.map.needsUpdate = true;
+              }
+              if (mat.emissiveMap) {
+                mat.emissiveMap.encoding = THREE.sRGBEncoding;
+                mat.emissiveMap.needsUpdate = true;
+              }
+              mat.needsUpdate = true;
+            });
+          } catch (e) {
+            // ignore if THREE.sRGBEncoding isn't available or mapping fails
+          }
 
           // Normalize the node name for matching: lowercase + trim
           const originalName = child.name || "";
@@ -106,7 +136,6 @@ export async function createChildBedroom({
           // standard checks: explicit list (case-insensitive), userData flag, or collision keywords
           const isExplicit = explicitNamesLower.has(nameLower);
           const isMarked = child.userData?.collidable === true;
-          // keyword matching done in lowercase form so it's resilient to case
 
           if (isExplicit || isMarked) {
             collidables.push(child);
@@ -120,6 +149,50 @@ export async function createChildBedroom({
 
       if (scene && typeof scene.add === "function") {
         scene.add(roomGroup);
+      }
+
+      // --- Level 2: Add room-local lighting to ensure the bedroom is lit and casts shadows ---
+      try {
+        // Add a hemisphere light for soft ambient illumination
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.7);
+        hemi.position.set(0, 50, 0);
+        roomGroup.add(hemi);
+
+        // Directional light to create clear shadows inside the room
+        const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+        // position the light above and slightly offset from the room center
+        const roomCenter = new THREE.Vector3();
+        roomBox.getCenter(roomCenter);
+        const roomSize = new THREE.Vector3();
+        roomBox.getSize(roomSize);
+        dir.position.set(
+          roomCenter.x + roomSize.x * 0.5,
+          roomCenter.y + Math.max(roomSize.y, 10) + 10,
+          roomCenter.z + roomSize.z * 0.5
+        );
+        dir.castShadow = true;
+
+        // Configure shadow quality and extents based on room size
+        const maxDim = Math.max(roomSize.x, roomSize.z, 10);
+        try {
+          dir.shadow.mapSize.width = 2048;
+          dir.shadow.mapSize.height = 2048;
+          dir.shadow.camera.near = 0.5;
+          dir.shadow.camera.far = Math.max(50, roomSize.length() * 2);
+          const ext = Math.max(20, maxDim * 1.2);
+          dir.shadow.camera.left = -ext;
+          dir.shadow.camera.right = ext;
+          dir.shadow.camera.top = ext;
+          dir.shadow.camera.bottom = -ext;
+          dir.shadow.bias = -0.0005;
+        } catch (e) {
+          // ignore if shadow camera properties are not available for this build
+        }
+
+        roomGroup.add(dir);
+      } catch (e) {
+        // If lighting fails for any reason, continue without blocking the model load
+        console.warn("Failed to add room-local lights for child bedroom:", e);
       }
 
       resolve({ roomGroup, room, collidables, roomBox, gltf });
