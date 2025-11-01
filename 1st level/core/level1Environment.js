@@ -17,6 +17,8 @@ export class Level1Environment {
     this.coordinateDisplay = null
     this.pauseMenu = null
     this.compass = null
+    this.backgroundMusic = null
+    this.isMusicPlaying = false
     this.init()
   }
 
@@ -34,6 +36,83 @@ export class Level1Environment {
 
     this.hitboxSystem = new Level1Hitboxes(this.scene)
     this.collidables.push(...this.hitboxSystem.getHitboxes())
+  }
+
+   url = "./sounds/nature_ambience.mp3";
+  async loadBackgroundMusic(url) {
+    return new Promise((resolve, reject) => {
+      // Create audio listener if it doesn't exist
+      if (!this.audioListener) {
+        this.audioListener = new THREE.AudioListener()
+        // You'll need to add this to the camera later
+      }
+
+      // Create audio loader and load the sound
+      const audioLoader = new THREE.AudioLoader()
+      
+      audioLoader.load(
+        url,
+        (buffer) => {
+          this.backgroundMusic = new THREE.Audio(this.audioListener)
+          this.backgroundMusic.setBuffer(buffer)
+          this.backgroundMusic.setLoop(true)
+          this.backgroundMusic.setVolume(0.3) // Lower volume for background music
+          
+          console.log("Background music loaded successfully")
+          resolve(this.backgroundMusic)
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading background music:", error)
+          reject(error)
+        }
+      )
+    })
+  }
+
+  playBackgroundMusic() {
+    if (this.backgroundMusic && !this.isMusicPlaying) {
+      this.backgroundMusic.play()
+      this.isMusicPlaying = true
+      console.log("Background music started")
+    }
+  }
+
+  pauseBackgroundMusic() {
+    if (this.backgroundMusic && this.isMusicPlaying) {
+      this.backgroundMusic.pause()
+      this.isMusicPlaying = false
+      console.log("Background music paused")
+    }
+  }
+
+  resumeBackgroundMusic() {
+    if (this.backgroundMusic && !this.isMusicPlaying) {
+      this.backgroundMusic.play()
+      this.isMusicPlaying = true
+      console.log("Background music resumed")
+    }
+  }
+
+  stopBackgroundMusic() {
+    if (this.backgroundMusic) {
+      this.backgroundMusic.stop()
+      this.isMusicPlaying = false
+      console.log("Background music stopped")
+    }
+  }
+
+  setMusicVolume(volume) {
+    if (this.backgroundMusic) {
+      this.backgroundMusic.setVolume(volume)
+    }
+  }
+
+  // Add this method to set the audio listener to the camera
+  setAudioListener(camera) {
+    if (camera && !camera.children.includes(this.audioListener)) {
+      camera.add(this.audioListener)
+    }
   }
 
   loadTerrainModel(path, scale = 1) {
@@ -172,6 +251,16 @@ export class Level1Environment {
           this.compass.update()
         }
       }
+    }
+  }
+
+  dispose() {
+    this.stopBackgroundMusic()
+    if (this.backgroundMusic) {
+      this.backgroundMusic = null
+    }
+    if (this.audioListener && this.camera) {
+      this.camera.remove(this.audioListener)
     }
   }
 }

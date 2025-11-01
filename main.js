@@ -122,6 +122,15 @@ class Game {
       console.warn("Terrain model not found, continuing without terrain:", error);
     }
 
+    // Load background music
+    try {
+      await this.currentEnvironment.loadBackgroundMusic('../1st level/sounds/nature.wav')
+      this.currentEnvironment.playBackgroundMusic()
+    } catch (error) {
+      console.warn("Background music not found, continuing without music:", error)
+    }
+
+
     // Load player model
     const gltf = await this.currentEnvironment.loadPlayerModel();
     this.currentPlayerController.setupAnimations(gltf);
