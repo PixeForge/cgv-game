@@ -1,4 +1,6 @@
+// 2nd level\terrain.js
 import * as THREE from "three";
+import { createInteractiveToyBlocks } from "./movingToyBlocks.js";
 
 // Utility to create a wall box you can position anywhere (near the mirror, etc.)
 export function createWall(width, height, depth, x, y, z, paint, path) {
@@ -24,60 +26,72 @@ export function createWall(width, height, depth, x, y, z, paint, path) {
   return wall;
 }
 
-export function train(Scene) {
+export function train(scene, camera, player, renderer) {
   const roomGroup = new THREE.Group();
   roomGroup.name = "ChildBedroom";
 
-  // Create the floor with marble texture
+  // --- Floor ---
   const textureLoader = new THREE.TextureLoader();
   const floorTexture = textureLoader.load("./2nd level/Textures/Could be.webp");
   floorTexture.wrapS = THREE.RepeatWrapping;
   floorTexture.wrapT = THREE.RepeatWrapping;
-  floorTexture.repeat.set(10, 10); // Adjust the repeat values to control texture tiling
+  floorTexture.repeat.set(10, 10);
 
-  const floorGeometry = new THREE.PlaneGeometry(100, 100); // Adjust size as needed
+  const floorGeometry = new THREE.PlaneGeometry(100, 100);
   const floorMaterial = new THREE.MeshStandardMaterial({
     map: floorTexture,
     roughness: 0.2,
     metalness: 0.1,
   });
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-  floor.position.y = 0; // Place at ground level
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
   floor.receiveShadow = true;
-  Scene.add(floor);
+  scene.add(floor);
 
-  // --- TOY BLOCKS (scattered colorful cubes) ---
-  const blockColors = [0xff6b6b, 0xffb86b, 0xfff77a, 0x8bd3dd, 0x9b8cff];
-  const blocks = new THREE.Group();
-  for (let i = 0; i < 12; i++) {
-    const size = 0.18 + Math.random() * 0.12;
-    const g = new THREE.BoxGeometry(size, size, size);
-    const m = new THREE.MeshStandardMaterial({
-      color: blockColors[i % blockColors.length],
-    });
-    const cube = new THREE.Mesh(g, m);
-    cube.position.set(
-      (Math.random() - 0.5) * 3.5,
-      size / 2,
-      (Math.random() - 0.2) * 3.5
-    );
-    cube.rotation.y = Math.random() * Math.PI;
-    cube.castShadow = true;
-    blocks.add(cube);
-  }
-  blocks.scale.set(1.8, 2.2, 1.8);
-  blocks.position.set(17, 0, -24);
-  roomGroup.add(blocks);
+  // --- Toy blocks ---
+  const { blocks, update: updateBlocks } = createInteractiveToyBlocks(
+    scene,
+    camera,
+    player,
+    renderer
+  );
 
-  // --- AMBIENT LIGHT ---
+  // --- Wall near mirror ---
+  const wallNearMirror = createWall(
+    32,
+    35,
+    0.2,
+    20,
+    35 / 2,
+    6.5,
+    null,
+    "2nd level/Textures/20251015_2213_Blue Solar System Texture_simple_compose_01k7mr2ssafgj912vz5pqzw3kd.png"
+  );
+  scene.add(wallNearMirror);
+
+  // --- Ambient light ---
   const ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
   roomGroup.add(ambient);
+  scene.add(roomGroup);
 
-  // Final position: put the room so that floor y=0 in world space
-  roomGroup.position.y = 0;
+  // ✅ Wrap all toy blocks in a group so they stay together
+  const blocksGroup = new THREE.Group();
+  blocksGroup.name = "ToyBlocks";
 
-  Scene.add(blocks); //code to add blocks to the scene
+  blocks.forEach((block) => blocksGroup.add(block));
+  scene.add(blocksGroup);
 
-  return { roomGroup, blocks };
+  // ✅ Return everything cleanly - IMPORTANT: Return individual blocks for collision detection
+  return {
+    roomGroup,
+    blocks: blocks, // Return the individual blocks array, not the group
+    blocksGroup: blocksGroup, // Also return the group if needed for organization
+    wall: wallNearMirror,
+    update: updateBlocks,
+    getAllCollidables: function () {
+      // Return all collidable objects including blocks and walls
+      return [wallNearMirror, ...blocks];
+    },
+  };
 }

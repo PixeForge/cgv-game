@@ -1,3 +1,4 @@
+// js/playerController.js
 import * as THREE from 'three';
 
 export class PlayerController {
@@ -12,15 +13,19 @@ export class PlayerController {
     this.overlayPlaying = null;
 
     this.onGround = true;
-
     this.velocityY = 0;
     this.keys = {};
+    this.cameraAngleX = 0;
+    this.cameraAngleY = 0.5;
+
+    this.cameraDistance = 6; // third-person default
+    this.firstPerson = false; // toggle mode
+    this.pointerLocked = false;
+
+    // Mouse drag support as fallback
     this.isMouseDown = false;
     this.mouseX = 0;
     this.mouseY = 0;
-    this.cameraAngleX = 0;
-    this.cameraAngleY = 0.5;
-    this.cameraDistance = 10;
 
     this.jumpCooldown = false;
     this.lastSpaceTime = 0;
@@ -29,19 +34,39 @@ export class PlayerController {
     this.PLAYER_HALF_WIDTH = 0.5;
     this.PLAYER_HEIGHT = 2.0;
 
+    this.mixer = null; // will be set when animations are initialized
+
     this.init();
   }
 
   init() {
     this.setupInputHandlers();
+    this.enablePointerLock();
+  }
+
+  enablePointerLock() {
+    const canvas = this.renderer.domElement;
+
+    canvas.addEventListener('click', () => {
+      if (canvas.requestPointerLock) canvas.requestPointerLock();
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      this.pointerLocked = document.pointerLockElement === canvas;
+    });
+
+    document.addEventListener('pointerlockerror', () => {
+      this.pointerLocked = false;
+    });
   }
 
   setupAnimations(gltf) {
-    const mixer = this.environment.getMixer();
+    // store mixer for later use
+    this.mixer = this.environment.getMixer();
 
     gltf.animations.forEach((clip) => {
       const name = clip.name.toLowerCase();
-      const action = mixer.clipAction(clip);
+      const action = this.mixer.clipAction(clip);
       this.actions[name] = action;
 
       if (name === 'idle' || name === 'running') {
@@ -58,15 +83,16 @@ export class PlayerController {
 
     this.playBaseAction('idle');
 
-    mixer.addEventListener('finished', (e) => {
-      const finishedName = this.getActionNameFromAction(e.action);
-      if (!finishedName) return;
-
-      if (finishedName === 'landing' || finishedName === 'jumping') {
-        this.overlayPlaying = null;
-        this.playBaseAction(this.determineBaseAction());
-      }
-    });
+    if (this.mixer) {
+      this.mixer.addEventListener('finished', (e) => {
+        const finishedName = this.getActionNameFromAction(e.action);
+        if (!finishedName) return;
+        if (finishedName === 'landing' || finishedName === 'jumping') {
+          this.overlayPlaying = null;
+          this.playBaseAction(this.determineBaseAction());
+        }
+      });
+    }
   }
 
   getActionNameFromAction(action) {
@@ -78,24 +104,37 @@ export class PlayerController {
 
   playBaseAction(name) {
     if (!this.actions[name]) return;
+
     if (this.baseActionName === name && this.lastBaseActionName === name) {
       this.actions[name].setEffectiveWeight(1.0);
       return;
     }
+
     this.lastBaseActionName = this.baseActionName;
     this.baseActionName = name;
 
-    for (const n of Object.keys(this.actions)) {
-      if (n === name) {
-        this.actions[n].reset().setEffectiveWeight(1.0).setEffectiveTimeScale(1).play();
-      } else if (n === this.lastBaseActionName && (n === 'idle' || n === 'running')) {
-        this.actions[n].fadeOut(0.25);
-      }
+    if (this.lastBaseActionName && this.actions[this.lastBaseActionName]) {
+      const prev = this.actions[this.lastBaseActionName];
+      prev.fadeOut(0.25);
     }
+
+    const curr = this.actions[name];
+    curr.reset();
+
+    if (name === 'running') {
+      curr.setEffectiveTimeScale(0.6);
+    } else {
+      curr.setEffectiveTimeScale(1.0);
+    }
+
+    curr.setEffectiveWeight(1.0);
+    curr.fadeIn(0.25);
+    curr.play();
   }
 
   playOverlayAction(name, { fadeIn = 0.12, fadeOut = 0.12, stopAfter = null } = {}) {
     if (!this.actions[name]) return;
+
     if (this.overlayPlaying && this.overlayPlaying !== name && this.actions[this.overlayPlaying]) {
       this.actions[this.overlayPlaying].fadeOut(fadeOut);
     }
@@ -106,14 +145,15 @@ export class PlayerController {
     a.setLoop(THREE.LoopOnce, 0);
     a.clampWhenFinished = true;
     a.enabled = true;
-    a.fadeIn(fadeIn);
     a.setEffectiveWeight(1.0);
+    a.setEffectiveTimeScale(1.0);
+    a.fadeIn(fadeIn);
     a.play();
 
     if (stopAfter) {
       setTimeout(() => {
         if (this.overlayPlaying === name) {
-          a.fadeOut(fadeOut);
+          if (a) a.fadeOut(fadeOut);
           this.overlayPlaying = null;
           this.playBaseAction(this.determineBaseAction());
         }
@@ -123,7 +163,7 @@ export class PlayerController {
 
   determineBaseAction() {
     if (!this.onGround) return 'jumping';
-    return this.baseActionName;
+    return this.baseActionName || 'idle';
   }
 
   setupInputHandlers() {
@@ -134,16 +174,40 @@ export class PlayerController {
         this.handleSpacePress();
         e.preventDefault();
       }
+
+      if (e.code === 'KeyC') {
+        this.firstPerson = !this.firstPerson;
+        this.cameraDistance = this.firstPerson ? 0.1 : 6;
+
+        const player = this.environment.getPlayer();
+        if (player) {
+          player.visible = !this.firstPerson;
+        }
+      }
     });
 
     document.addEventListener('keyup', (e) => {
       if (e.code) this.keys[e.code] = false;
     });
 
+    // Pointer lock camera movement
+    document.addEventListener('mousemove', (e) => {
+      if (this.pointerLocked) {
+        const dx = e.movementX || 0;
+        const dy = e.movementY || 0;
+        this.cameraAngleX -= dx * 0.0025;
+        this.cameraAngleY -= dy * 0.0025;
+        this.cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2 - 0.01, this.cameraAngleY));
+      }
+    });
+
+    // Mouse drag camera movement (fallback)
     document.addEventListener('mousedown', (e) => {
-      this.isMouseDown = true;
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
+      if (!this.pointerLocked) {
+        this.isMouseDown = true;
+        this.mouseX = e.clientX;
+        this.mouseY = e.clientY;
+      }
     });
 
     document.addEventListener('mouseup', () => {
@@ -151,7 +215,7 @@ export class PlayerController {
     });
 
     document.addEventListener('mousemove', (e) => {
-      if (this.isMouseDown) {
+      if (!this.pointerLocked && this.isMouseDown) {
         const dx = e.clientX - this.mouseX;
         const dy = e.clientY - this.mouseY;
         this.mouseX = e.clientX;
@@ -164,8 +228,10 @@ export class PlayerController {
     });
 
     document.addEventListener('wheel', (e) => {
-      this.cameraDistance += e.deltaY * 0.01;
-      this.cameraDistance = Math.max(4, Math.min(20, this.cameraDistance));
+      if (!this.firstPerson) {
+        this.cameraDistance += e.deltaY * 0.01;
+        this.cameraDistance = Math.max(3, Math.min(20, this.cameraDistance));
+      }
     });
   }
 
@@ -183,19 +249,19 @@ export class PlayerController {
 
     // Check for ceiling collisions directly above the player
     for (const obj of collidables) {
-        const box = new THREE.Box3().setFromObject(obj);
+      const box = new THREE.Box3().setFromObject(obj);
 
-        const intersectsX = player.position.x + this.PLAYER_HALF_WIDTH > box.min.x &&
-                            player.position.x - this.PLAYER_HALF_WIDTH < box.max.x;
-        const intersectsZ = player.position.z + this.PLAYER_HALF_WIDTH > box.min.z &&
-                            player.position.z - this.PLAYER_HALF_WIDTH < box.max.z;
+      const intersectsX = player.position.x + this.PLAYER_HALF_WIDTH > box.min.x &&
+                          player.position.x - this.PLAYER_HALF_WIDTH < box.max.x;
+      const intersectsZ = player.position.z + this.PLAYER_HALF_WIDTH > box.min.z &&
+                          player.position.z - this.PLAYER_HALF_WIDTH < box.max.z;
 
-        const objectBottom = box.min.y;
+      const objectBottom = box.min.y;
 
-        // Block jump only if ceiling is within CEILING_BUFFER
-        if (intersectsX && intersectsZ && objectBottom < playerTopY + CEILING_BUFFER && objectBottom > player.position.y) {
-            return; // Cannot jump through this object
-        }
+      // Block jump only if ceiling is within CEILING_BUFFER
+      if (intersectsX && intersectsZ && objectBottom < playerTopY + CEILING_BUFFER && objectBottom > player.position.y) {
+        return; // Cannot jump through this object
+      }
     }
 
     // Jump is allowed
@@ -205,11 +271,21 @@ export class PlayerController {
 
     this.jumpCooldown = true;
     setTimeout(() => (this.jumpCooldown = false), 200);
-}
+  }
 
+  update(delta, elapsedTime = 0) {
+    if (this.mixer) this.mixer.update(delta);
 
+    // Update environment moving parts (blocks) first so collisions use up-to-date positions
+    if (this.environment && typeof this.environment.updateBlocks === 'function') {
+      try {
+        this.environment.updateBlocks(delta, elapsedTime);
+      } catch (e) {
+        // ignore errors from environment updateBlocks to avoid breaking player update loop
+        // console.warn('updateBlocks error', e);
+      }
+    }
 
-  update(delta) {
     this.updatePlayer(delta);
     this.updateCamera();
   }
@@ -218,125 +294,174 @@ export class PlayerController {
     const player = this.environment.getPlayer();
     if (!player) return;
 
-    const speed = 5;
+    const speed = 3;
     const move = new THREE.Vector3();
 
-    // --- Capture input ---
     if (this.keys['KeyW']) move.z -= 1;
     if (this.keys['KeyS']) move.z += 1;
     if (this.keys['KeyA']) move.x -= 1;
     if (this.keys['KeyD']) move.x += 1;
 
     const isMoving = move.lengthSq() > 0;
-    if (isMoving) {
-        move.normalize();
-        move.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraAngleX);
-        move.multiplyScalar(speed * delta);
-    }
 
+    // --- SIMPLIFIED COLLISION SYSTEM ---
     const collidables = this.environment.getCollidables();
-    const PAD = 0.5;
-    const STEP_HEIGHT = 0.5;
 
-    // --- Determine current ground under player ---
-    let groundY = 0;
+    // Calculate movement direction
+    let movement = new THREE.Vector3();
+    if (isMoving) {
+      move.normalize();
+      const forward = new THREE.Vector3(Math.sin(this.cameraAngleX), 0, Math.cos(this.cameraAngleX));
+      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+
+      if (this.firstPerson) {
+        movement.addScaledVector(forward, -move.z);
+        movement.addScaledVector(right, -move.x);
+      } else {
+        movement.addScaledVector(forward, move.z);
+        movement.addScaledVector(right, move.x);
+      }
+
+      movement.setY(0);
+      movement.normalize().multiplyScalar(speed * delta);
+    }
+
+    // --- STEP 1: Apply horizontal movement with collision detection ---
+    const newPos = new THREE.Vector3(
+      player.position.x + movement.x,
+      player.position.y,
+      player.position.z + movement.z
+    );
+
+    // Create player collision box at new position
+    const playerBox = new THREE.Box3(
+      new THREE.Vector3(
+        newPos.x - this.PLAYER_HALF_WIDTH,
+        newPos.y,
+        newPos.z - this.PLAYER_HALF_WIDTH
+      ),
+      new THREE.Vector3(
+        newPos.x + this.PLAYER_HALF_WIDTH,
+        newPos.y + this.PLAYER_HEIGHT,
+        newPos.z + this.PLAYER_HALF_WIDTH
+      )
+    );
+
+    // Check for collisions at new position
+    let canMove = true;
     for (const obj of collidables) {
-        const box = new THREE.Box3().setFromObject(obj);
-        const px = player.position.x;
-        const pz = player.position.z;
-
-        if (px > box.min.x - PAD && px < box.max.x + PAD &&
-            pz > box.min.z - PAD && pz < box.max.z + PAD) {
-            groundY = Math.max(groundY, box.max.y);
-        }
+      const objBox = new THREE.Box3().setFromObject(obj);
+      
+      if (playerBox.intersectsBox(objBox)) {
+        canMove = false;
+        break;
+      }
     }
 
-    // --- Horizontal movement + step-up ---
-    const nextPos = player.position.clone().add(move);
-
-    let blocked = false;
-    let maxStepUpY = -Infinity;
-
-    for (const obj of collidables) {
-        const box = new THREE.Box3().setFromObject(obj);
-
-        // Horizontal collision box at player current height
-        const playerBox = new THREE.Box3(
-            new THREE.Vector3(nextPos.x - this.PLAYER_HALF_WIDTH, player.position.y, nextPos.z - this.PLAYER_HALF_WIDTH),
-            new THREE.Vector3(nextPos.x + this.PLAYER_HALF_WIDTH, player.position.y + this.PLAYER_HEIGHT, nextPos.z + this.PLAYER_HALF_WIDTH)
-        );
-
-        // Skip objects below player's feet
-        if (box.max.y <= player.position.y + 0.01) continue;
-
-        if (playerBox.intersectsBox(box)) {
-            const objectTop = box.max.y;
-
-            // Step-up if obstacle is slightly above feet
-            if (objectTop - player.position.y > 0 && objectTop - player.position.y <= STEP_HEIGHT) {
-                maxStepUpY = Math.max(maxStepUpY, objectTop);
-            } else {
-                blocked = true;
-                break;
-            }
-        }
+    // Apply movement if no collision
+    if (canMove) {
+      player.position.x = newPos.x;
+      player.position.z = newPos.z;
     }
 
-    if (!blocked) {
-        player.position.add(move);
-
-        if (maxStepUpY > -Infinity) {
-            player.position.y = maxStepUpY;
-            this.velocityY = 0;
-            this.onGround = true;
-        }
-    }
-
-    // --- Gravity ---
+    // --- STEP 2: Apply gravity and vertical collision ---
     this.velocityY -= 20 * delta;
     player.position.y += this.velocityY * delta;
 
-    // --- Landing ---
-    if (player.position.y <= groundY + 0.001) {
-        if (!this.onGround) {
-            this.playOverlayAction('landing', { fadeIn: 0.06, fadeOut: 0.12, stopAfter: 0.5 });
-        }
-        player.position.y = groundY;
-        this.velocityY = 0;
-        this.onGround = true;
+    // Create player box at current position for ground detection
+    const currentPlayerBox = new THREE.Box3(
+      new THREE.Vector3(
+        player.position.x - this.PLAYER_HALF_WIDTH,
+        player.position.y,
+        player.position.z - this.PLAYER_HALF_WIDTH
+      ),
+      new THREE.Vector3(
+        player.position.x + this.PLAYER_HALF_WIDTH,
+        player.position.y + this.PLAYER_HEIGHT,
+        player.position.z + this.PLAYER_HALF_WIDTH
+      )
+    );
+
+    // Find the highest ground surface under the player
+    let highestGround = -Infinity;
+    let isOnGround = false;
+
+    for (const obj of collidables) {
+      const objBox = new THREE.Box3().setFromObject(obj);
+      
+      // Check if player is above this object and close to its top surface
+      const isAboveObject = 
+        currentPlayerBox.min.x < objBox.max.x &&
+        currentPlayerBox.max.x > objBox.min.x &&
+        currentPlayerBox.min.z < objBox.max.z &&
+        currentPlayerBox.max.z > objBox.min.z &&
+        currentPlayerBox.min.y >= objBox.max.y - 0.1 && // Player bottom is near object top
+        currentPlayerBox.min.y <= objBox.max.y + 0.5;   // But not too far above
+
+      if (isAboveObject) {
+        highestGround = Math.max(highestGround, objBox.max.y);
+        isOnGround = true;
+      }
+    }
+
+    // Apply ground collision
+    if (isOnGround && player.position.y <= highestGround + 0.1) {
+      player.position.y = highestGround;
+      this.velocityY = 0;
+      this.onGround = true;
+    } else if (player.position.y <= 0.1) {
+      // Fallback to floor level
+      player.position.y = 0;
+      this.velocityY = 0;
+      this.onGround = true;
     } else {
-        this.onGround = false;
+      this.onGround = false;
     }
 
-    // --- Base animations ---
+    // --- STEP 3: Room bounds collision ---
+    const roomBox = this.environment.getRoomBounds();
+    if (roomBox) {
+      const margin = this.PLAYER_HALF_WIDTH + 0.05;
+      player.position.x = Math.max(roomBox.min.x + margin, Math.min(roomBox.max.x - margin, player.position.x));
+      player.position.z = Math.max(roomBox.min.z + margin, Math.min(roomBox.max.z - margin, player.position.z));
+    }
+
+    // --- STEP 4: Animations & rotation ---
     if (this.onGround) {
-        if (isMoving) this.playBaseAction('running');
-        else this.playBaseAction('idle');
+      if (isMoving) this.playBaseAction('running');
+      else this.playBaseAction('idle');
     }
 
-    // --- Face movement direction ---
-    if (isMoving) {
-        const angle = Math.atan2(move.x, move.z);
-        player.rotation.y = angle;
+    if (isMoving && movement.lengthSq() > 0) {
+      const dir = new THREE.Vector3(movement.x, 0, movement.z).normalize();
+      player.rotation.y = Math.atan2(dir.x, dir.z);
     }
-}
-
-
-
+  }
 
   updateCamera() {
     const player = this.environment.getPlayer();
     if (!player) return;
 
-    const offsetX = Math.sin(this.cameraAngleX) * this.cameraDistance * Math.cos(this.cameraAngleY);
-    const offsetY = Math.sin(this.cameraAngleY) * this.cameraDistance;
-    const offsetZ = Math.cos(this.cameraAngleX) * this.cameraDistance * Math.cos(this.cameraAngleY);
+    if (this.firstPerson) {
+      const eyeHeight = 1.6;
+      const forward = new THREE.Vector3(Math.sin(this.cameraAngleX), 0, Math.cos(this.cameraAngleX));
 
-    this.camera.position.set(
-      player.position.x + offsetX,
-      player.position.y + offsetY + 2,
-      player.position.z + offsetZ
-    );
-    this.camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
+      const eyePos = new THREE.Vector3(player.position.x, player.position.y + eyeHeight, player.position.z);
+      const lookAt = new THREE.Vector3(player.position.x + forward.x, player.position.y + eyeHeight, player.position.z + forward.z);
+
+      this.camera.position.copy(eyePos);
+      this.camera.lookAt(lookAt);
+    } else {
+      const offsetX = Math.sin(this.cameraAngleX) * this.cameraDistance * Math.cos(this.cameraAngleY);
+      const offsetY = Math.sin(this.cameraAngleY) * this.cameraDistance;
+      const offsetZ = Math.cos(this.cameraAngleX) * this.cameraDistance * Math.cos(this.cameraAngleY);
+
+      this.camera.position.set(
+        player.position.x + offsetX,
+        player.position.y + offsetY + 2,
+        player.position.z + offsetZ
+      );
+      this.camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
+    }
   }
 }

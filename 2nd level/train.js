@@ -1,12 +1,16 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
+//export default addTrain;
+//import * as THREE from "three";
+//import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
 export async function addTrain({
   scene,
   loader = null,
   url = "./models/3_december2020_day_7_train_set.glb",
   position = null,
-  scale = 0.03,
+  scale = 0.045,
   makeCollidable = false,
   onProgress = null,
 } = {}) {

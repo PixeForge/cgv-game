@@ -24,6 +24,22 @@ export class Environment {
     const dirLight = new THREE.DirectionalLight(0xffffff, 1);
     dirLight.position.set(5, 10, 7.5);
     dirLight.castShadow = true;
+    // Improve shadow quality and cover a larger area (helps indoor rooms)
+    try {
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 0.5;
+      dirLight.shadow.camera.far = 200;
+      // Expand orthographic shadow camera to cover typical room sizes
+      dirLight.shadow.camera.left = -50;
+      dirLight.shadow.camera.right = 50;
+      dirLight.shadow.camera.top = 50;
+      dirLight.shadow.camera.bottom = -50;
+      // Slight bias to reduce shadow acne
+      dirLight.shadow.bias = -0.0005;
+    } catch (e) {
+      // ignore if shadow properties aren't available for this three.js build
+    }
     this.scene.add(dirLight);
 
     // NOTE: removed the brown ground mesh here so the room's floor (from GLB)

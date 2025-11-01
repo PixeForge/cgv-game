@@ -6,9 +6,15 @@ import { placeModels } from "../1st level/modelPlacer.js";
 import { Environment } from "./environment.js";
 import { Environment as ClocktowerEnv } from "../3rd level/clocktower.js";
 import { createChildBedroom } from "../2nd level/usingmodels.js";
-import { addMirror } from "../2nd level/mirror.js";
+//import { addMirror } from "../2nd level/mirror.js";
 import { addTrain } from "../2nd level/train.js";
 import { train, createWall } from "../2nd level/terrain.js";
+import { createReflectorMirror } from "../2nd level/reflectorMirror.js";
+import { createAdventureTimer } from "../2nd level/Level2Timer.js";
+import { createKey, setupKeyInteraction } from "../2nd level/key.js";
+import { MKChaser } from "../2nd level/mkChaser.js";
+import { createLevel2Quizzes } from "../2nd level/quiz.js";
+import { createPortal } from "../2nd level/portal.js";
 
 export class LevelManager {
   constructor(renderer, camera, playerController) {
@@ -22,10 +28,85 @@ export class LevelManager {
       2: "Bedroom (Level 2)",
       3: "Clocktower (Level 3)",
     };
+    this.level2Blocks = null; // Store reference to blocks for updates
+    this.adventureTimer = null; // Timer for Level 2
+    this.level2QuizAttempts = 0;
+    this.level2QuizTotal = 2;
+    this.level2QuizCompleted = 0;
+    this.level2Portal = null;
+    this.level2BgAudio = null;
+    this.level2LoseAudio = null;
+  }
+
+  handleLevel2Timeout() {
+    try {
+      // Stop background music and play lose SFX
+      if (this.level2BgAudio) {
+        try {
+          this.level2BgAudio.pause();
+        } catch (_) {}
+      }
+      if (this.level2LoseAudio) {
+        try {
+          this.level2LoseAudio.currentTime = 0;
+          this.level2LoseAudio.play().catch(() => {});
+        } catch (_) {}
+      }
+
+      // Show a simple lose overlay
+      const overlay = document.createElement("div");
+      overlay.id = "level2-lose-overlay";
+      overlay.style.cssText = `
+        position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+        display: flex; align-items: center; justify-content: center; z-index: 3000;`;
+      const box = document.createElement("div");
+      box.style.cssText = `
+        background: white; padding: 24px 32px; border-radius: 12px;
+        font-family: Arial, sans-serif; color: #c62828; font-size: 24px;`;
+      box.textContent = "You lose! Time ran out. Restarting...";
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      // Stop and hide timer
+      if (this.adventureTimer) {
+        this.adventureTimer.stop();
+        this.adventureTimer.hide();
+      }
+
+      // Reload Level 2 after short delay
+      setTimeout(() => {
+        try {
+          document.body.removeChild(overlay);
+        } catch (_) {}
+        this.loadLevel(2);
+      }, 1500);
+    } catch (e) {
+      console.warn("Failed to handle timeout:", e);
+      this.loadLevel(2);
+    }
   }
 
   async loadLevel(levelNumber) {
     console.log(`Loading level ${levelNumber}...`);
+
+    // Handle timer visibility based on level
+    if (this.adventureTimer) {
+      if (levelNumber === 2) {
+        // Timer will be shown and started in loadLevel2
+      } else {
+        // Hide and stop timer for other levels
+        this.adventureTimer.stop();
+        this.adventureTimer.hide();
+      }
+    }
+
+    // Stop Level 2 background audio if leaving Level 2
+    if (this.level2BgAudio && levelNumber !== 2) {
+      try {
+        this.level2BgAudio.pause();
+        this.level2BgAudio.currentTime = 0;
+      } catch (_) {}
+    }
 
     // Clean up current level
     if (this.currentEnvironment) {
@@ -81,23 +162,48 @@ export class LevelManager {
     this.currentEnvironment = new Environment();
     this.playerController.environment = this.currentEnvironment;
 
+    // --- Level 2 Audio: Background and Lose Sound ---
+    try {
+      if (!this.level2BgAudio) {
+        // Point to the actual Level 2 sounds folder and filename
+        this.level2BgAudio = new Audio(
+          "../2nd level/sounds/epic-adventure-background-music-404457.mp3"
+        );
+        this.level2BgAudio.loop = true;
+        this.level2BgAudio.volume = 0.5;
+        // Fallback in case loop fails on some browsers
+        if (!this.level2BgAudio._loopHandlerSet) {
+          this.level2BgAudio.addEventListener("ended", () => {
+            try {
+              this.level2BgAudio.currentTime = 0;
+              this.level2BgAudio.play().catch(() => {});
+            } catch (_) {}
+          });
+          this.level2BgAudio._loopHandlerSet = true;
+        }
+      }
+      try {
+        this.level2BgAudio.currentTime = 0;
+      } catch (_) {}
+      this.level2BgAudio.play().catch(() => {});
+
+      if (!this.level2LoseAudio) {
+        // Use the actual lose notification filename present in the 2nd level sounds folder
+        this.level2LoseAudio = new Audio(
+          "../2nd level/sounds/You-lose-notification-in-cartoon-or-game-sound-effect.mp3"
+        );
+        this.level2LoseAudio.loop = false;
+        this.level2LoseAudio.volume = 0.8;
+      }
+    } catch (e) {
+      console.warn("Audio init failed:", e);
+    }
+
     // Load player
     const gltf = await this.currentEnvironment.loadPlayerModel();
     this.playerController.setupAnimations(gltf);
 
-    // Load bedroom
-    const { blocks } = train(this.currentEnvironment.getScene());
-    //blocks.position.set(1, 0, 4.0);
-
-    // Add blocks as collidables
-    const blockCollidables = [];
-    blocks.traverse((child) => {
-      if (child.isMesh && child.visible && child.geometry) {
-        blockCollidables.push(child);
-      }
-    });
-    this.currentEnvironment.addCollidables(blockCollidables);
-
+    // Load the main bedroom FIRST to get proper room bounds
     const { roomGroup, collidables, roomBox } = await createChildBedroom({
       scene: this.currentEnvironment.getScene(),
       THREE: THREE,
@@ -107,17 +213,116 @@ export class LevelManager {
 
     this.currentEnvironment.addCollidables(collidables);
     this.currentEnvironment.setRoomBounds(roomBox);
+    console.log(`Added ${collidables.length} bedroom collidables`);
 
+    // POSITION PLAYER FIRST - before loading blocks and other objects
     const player = this.currentEnvironment.getPlayer();
     if (player) {
-      // Get the room's center and adjust for room position
-      const center = roomBox.getCenter(new THREE.Vector3());
-      // Place player in the middle of the room, slightly above floor to prevent clipping
+      // Get room center and size for proper positioning
+      const roomCenter = new THREE.Vector3();
+      roomBox.getCenter(roomCenter);
+      const roomSize = new THREE.Vector3();
+      roomBox.getSize(roomSize);
+
+      // Position player safely inside the bedroom
+      // Use fixed coordinates that are known to be inside the bedroom
       player.position.set(
-        center.x, // Center X (left/right)
-        roomBox.min.y + 0.5, // Floor level + small offset to prevent clipping
-        center.z + 15
+        roomCenter.x - 5, // Move left from center
+        roomBox.min.y + 1.0, // Start above floor
+        roomCenter.z + 25 // Move toward camera from center
       );
+
+      console.log("Player positioned at:", player.position);
+      console.log("Room bounds:", {
+        min: `(${roomBox.min.x.toFixed(2)}, ${roomBox.min.y.toFixed(
+          2
+        )}, ${roomBox.min.z.toFixed(2)})`,
+        max: `(${roomBox.max.x.toFixed(2)}, ${roomBox.max.y.toFixed(
+          2
+        )}, ${roomBox.max.z.toFixed(2)})`,
+        center: `(${roomCenter.x.toFixed(2)}, ${roomCenter.y.toFixed(
+          2
+        )}, ${roomCenter.z.toFixed(2)})`,
+      });
+    }
+
+    // (Key will be added below after terrain is created) - avoid adding duplicate keys here
+
+    // NOW load bedroom terrain and get blocks (after player is positioned)
+    const terrainData = train(
+      this.currentEnvironment.getScene(),
+      this.camera,
+      this.currentEnvironment.getPlayer(),
+      this.renderer
+    );
+
+    // ADD KEY TO THE SCENE
+    try {
+      const keyResult = await createKey(
+        this.currentEnvironment.getScene(),
+        new GLTFLoader(),
+        { x: 20, y: 3, z: -15 } // Position the key - adjust as needed
+      );
+
+      this.level2Key = keyResult.keyObject;
+
+      // Set up key interaction
+      this.keyInteraction = setupKeyInteraction(
+        this.level2Key,
+        player,
+        () => this.onKeyCollected() // Callback when key is collected
+      );
+
+      console.log("Key added to Level 2");
+    } catch (error) {
+      console.warn("Could not load key model:", error);
+    }
+
+    // Store blocks reference for updates
+    this.level2Blocks = terrainData.blocks;
+
+    // DEBUG: Check what we're getting from terrain data
+    console.log("Terrain data received:", terrainData);
+    console.log("Blocks array:", this.level2Blocks);
+    console.log("Blocks count:", this.level2Blocks?.length);
+
+    // FIXED: Add blocks as collidables with proper identification
+    if (this.level2Blocks && Array.isArray(this.level2Blocks)) {
+      // First, mark all blocks with identification flags
+      this.level2Blocks.forEach((block) => {
+        if (!block.userData) block.userData = {};
+        block.userData.isBlock = true;
+        block.userData.isMovingToyBlock = true;
+        block.userData.collidable = true;
+      });
+
+      // Clear any previous blocks to avoid duplicates
+      const currentCollidables = this.currentEnvironment.getCollidables();
+      const nonBlockCollidables = currentCollidables.filter(
+        (obj) => !obj.userData?.isBlock
+      );
+      this.currentEnvironment.collidables = nonBlockCollidables;
+
+      // Add all blocks to collidables
+      this.currentEnvironment.addCollidables(this.level2Blocks);
+      console.log(
+        `Successfully added ${this.level2Blocks.length} blocks as collidables`
+      );
+    }
+
+    // Add wall as collidable if it exists
+    if (terrainData.wall) {
+      if (!terrainData.wall.userData) terrainData.wall.userData = {};
+      terrainData.wall.userData.isWall = true;
+      terrainData.wall.userData.collidable = true;
+      this.currentEnvironment.addCollidables([terrainData.wall]);
+      console.log("Added wall as collidable");
+    }
+
+    // Attach the update function to environment
+    if (terrainData.update) {
+      this.currentEnvironment.updateBlocks = terrainData.update;
+      console.log("Block update function attached to environment");
     }
 
     this.playerController.cameraDistance = Math.min(
@@ -126,73 +331,343 @@ export class LevelManager {
     );
 
     // Add train
-    const { trainGroup } = await addTrain({
-      scene: this.currentEnvironment.getScene(),
-      loader: new GLTFLoader(),
-      makeCollidable: true,
-    });
+    try {
+      const { trainGroup, collidables: trainCollidables } = await addTrain({
+        scene: this.currentEnvironment.getScene(),
+        loader: new GLTFLoader(),
+        makeCollidable: true,
+      });
 
-    // Instead of adding the whole group, add individual mesh collidables
-    const trainCollidables = [];
-    trainGroup.traverse((child) => {
-      // Only add meshes that are visible and have actual geometry
-      if (child.isMesh && child.visible && child.geometry) {
-        trainCollidables.push(child);
+      // Add train collidables
+      if (trainCollidables && trainCollidables.length > 0) {
+        this.currentEnvironment.addCollidables(trainCollidables);
+        console.log(
+          `Added ${trainCollidables.length} train collidables from returned array`
+        );
+      } else {
+        // Fallback: traverse the train group to find collidables
+        const fallbackTrainCollidables = [];
+        if (trainGroup) {
+          trainGroup.traverse((child) => {
+            if (child.isMesh && child.visible && child.geometry) {
+              if (!child.userData) child.userData = {};
+              child.userData.isTrain = true;
+              child.userData.collidable = true;
+              fallbackTrainCollidables.push(child);
+            }
+          });
+          this.currentEnvironment.addCollidables(fallbackTrainCollidables);
+          console.log(
+            `Added ${fallbackTrainCollidables.length} train collidables from traversal`
+          );
+        }
       }
-    });
-    this.currentEnvironment.addCollidables(trainCollidables);
+    } catch (error) {
+      console.warn("Failed to load train:", error);
+    }
 
-    // Add mirror
-    const { mirrorGroup } = await addMirror({
-      scene: this.currentEnvironment.getScene(),
-      loader: new GLTFLoader(),
-      url: "./models/mirror_a.glb",
-    });
+    // Add reflective mirror using Reflector class
+    try {
+      const reflectorMirror = createReflectorMirror({
+        scene: this.currentEnvironment.getScene(),
+        width: 3,
+        height: 8,
+        position: { x: 20, y: 5, z: 6.2 },
+        rotation: { x: 0, y: Math.PI, z: 0 },
+        textureWidth: 512,
+        textureHeight: 512,
+        color: 0xcccccc,
+        addFrame: true,
+        frameThickness: 0.3,
+        frameColor: 0x8b4513,
+      });
+      console.log("Reflector mirror added successfully");
 
-    // Add individual mirror mesh collidables
-    const mirrorCollidables = [];
-    mirrorGroup.traverse((child) => {
-      // Only add meshes that are visible and have actual geometry
-      if (child.isMesh && child.visible && child.geometry) {
-        mirrorCollidables.push(child);
+      // Add mirror collidables. createReflectorMirror returns an object with a mirrorGroup
+      try {
+        const mirrorRoot =
+          reflectorMirror?.mirrorGroup ||
+          reflectorMirror?.mirror ||
+          reflectorMirror;
+        const mirrorCollidables = [];
+        if (mirrorRoot && typeof mirrorRoot.traverse === "function") {
+          mirrorRoot.traverse((child) => {
+            if (child.isMesh && child.visible && child.geometry) {
+              if (!child.userData) child.userData = {};
+              child.userData.isMirror = true;
+              child.userData.collidable = true;
+              mirrorCollidables.push(child);
+            }
+          });
+        }
+        if (mirrorCollidables.length > 0) {
+          this.currentEnvironment.addCollidables(mirrorCollidables);
+        }
+      } catch (e) {
+        console.warn("Failed to attach mirror collidables:", e);
       }
+    } catch (error) {
+      console.warn("Failed to create reflector mirror:", error);
+    }
+
+    // --- Initialize Level 2 Quizzes ---
+    try {
+      this.level2Quizzes = createLevel2Quizzes({
+        scene: this.currentEnvironment.getScene(),
+        player: this.currentEnvironment.getPlayer(),
+        camera: this.camera,
+        onAttempt: (quizIndex) => {
+          // Only count unique quiz attempts; quiz.js already restricts to first time
+          this.level2QuizAttempts += 1;
+          if (this.adventureTimer && this.adventureTimer.setQuizProgress) {
+            this.adventureTimer.setQuizProgress(
+              this.level2QuizAttempts,
+              this.level2QuizTotal
+            );
+          }
+        },
+        onComplete: (quizIndex) => {
+          this.level2QuizCompleted += 1;
+          if (this.level2QuizCompleted >= this.level2QuizTotal) {
+            // Spawn the portal
+            try {
+              this.level2Portal = createPortal({
+                scene: this.currentEnvironment.getScene(),
+                position: { x: 8, y: 4, z: -8 },
+              });
+              if (this.level2Portal && this.level2Portal.setRotation) {
+                this.level2Portal.setRotation(0, Math.PI / 2, 0);
+              }
+              if (this.level2Portal && this.level2Portal.collider) {
+                this.currentEnvironment.addCollidables([
+                  this.level2Portal.collider,
+                ]);
+              }
+              console.log(
+                "Magic portal appeared. Use setPosition(x,y,z) to move it."
+              );
+            } catch (e) {
+              console.warn("Failed to create portal:", e);
+            }
+
+            // Subtle hint popup after completing both quizzes
+            try {
+              const hint = document.createElement("div");
+              hint.id = "level2-subtle-hint";
+              hint.textContent =
+                "Blocks don’t only push forward—sometimes they help you rise where pillows rest; and do not let them get away";
+              hint.style.cssText = `
+                position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+                background: rgba(255,255,255,0.92); color: #004a99; border: 2px solid #66b3ff; border-radius: 10px;
+                padding: 10px 16px; font-family: Arial, sans-serif; font-size: 16px; z-index: 2500;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+              `;
+              document.body.appendChild(hint);
+              setTimeout(() => {
+                try {
+                  document.body.removeChild(hint);
+                } catch (_) {}
+              }, 6000);
+            } catch (_) {}
+          }
+        },
+      });
+
+      // Define first quiz zone: by the mirror by the wall
+      this.level2Quizzes.addZone({
+        id: "quiz-mirror",
+        position: { x: 20, y: 0, z: 6.2 },
+        radius: 3.5,
+        quizIndex: 0,
+      });
+
+      // Define second quiz zone: near the train
+      // Train GLB starts at x=30 inside its group at z=0 by default
+      this.level2Quizzes.addZone({
+        id: "quiz-train",
+        position: { x: 30, y: 0, z: 0 },
+        radius: 5.5,
+        quizIndex: 1,
+      });
+
+      // Disable blocks’ P interaction while quizzes are active
+      window.LEVEL2_DISABLE_BLOCK_PUSH = true;
+      console.log("Level 2 quizzes initialized");
+    } catch (e) {
+      console.warn("Failed to initialize Level 2 quizzes:", e);
+    }
+
+    // --- Add MK enemy that chases the player ---
+    // In loadLevel2 method - ensure MKChaser is properly set up
+    // In loadLevel2 method - ensure MKChaser is properly set up
+    try {
+      this.mkChaser = new MKChaser(
+        this.currentEnvironment.getScene(),
+        this.currentEnvironment.getPlayer(),
+        this.currentEnvironment.getRoomBounds(),
+        this.currentEnvironment
+      );
+
+      // Add the enemy model to collidables if the model has been loaded
+      try {
+        const mkModel = this.mkChaser?.model;
+        if (mkModel && typeof mkModel.traverse === "function") {
+          mkModel.traverse((child) => {
+            if (child.isMesh) {
+              if (!child.userData) child.userData = {};
+              child.userData.isEnemy = true;
+              child.userData.collidable = true;
+            }
+          });
+        }
+      } catch (e) {
+        console.warn(
+          "Failed to mark MKChaser collidables (may load later):",
+          e
+        );
+      }
+
+      console.log("MK chaser initialized in Level 2");
+    } catch (err) {
+      console.error("Failed to initialize MK chaser:", err);
+    }
+
+    // Add fourth wall (optional, can be added if needed)
+    // Uncomment if wall texture is needed:
+    // const wallColor = new THREE.Color(0x6cceff);
+    // const wallNearMirror = createWall(
+    //   32,
+    //   35,
+    //   0.2,
+    //   20,
+    //   1.5,
+    //   6.5,
+    //   null,
+    //   "2nd level/Textures/20251015_2213_Blue Solar System Texture_simple_compose_01k7mr2ssafgj912vz5pqzw3kd.png"
+    // );
+    // this.currentEnvironment.getScene().add(wallNearMirror);
+    // this.currentEnvironment.addCollidables([wallNearMirror]);
+
+    // Create and start the adventure timer for Level 2
+    if (!this.adventureTimer) {
+      this.adventureTimer = createAdventureTimer();
+    }
+    this.adventureTimer.reset();
+    this.adventureTimer.show();
+    // Configure countdown from 5 minutes and start
+    if (this.adventureTimer.setCountdown) {
+      this.adventureTimer.setCountdown(300);
+    }
+    if (this.adventureTimer.onExpire) {
+      this.adventureTimer.onExpire(() => this.handleLevel2Timeout());
+    }
+    this.adventureTimer.start();
+    if (this.adventureTimer.setQuizProgress) {
+      this.adventureTimer.setQuizProgress(0, this.level2QuizTotal);
+    }
+
+    // Final verification
+    console.log("=== LEVEL 2 LOAD COMPLETE ===");
+    console.log("Level 2 (Bedroom) loaded with:", {
+      blocks: this.level2Blocks?.length || 0,
+      totalCollidables: this.currentEnvironment.getCollidables().length,
+      blocksInCollidables: this.currentEnvironment
+        .getCollidables()
+        .filter((obj) => obj.userData?.isBlock).length,
+      hasUpdateFunction: !!this.currentEnvironment.updateBlocks,
+      playerPosition: player
+        ? `(${player.position.x.toFixed(2)}, ${player.position.y.toFixed(
+            2
+          )}, ${player.position.z.toFixed(2)})`
+        : "No player",
     });
-    this.currentEnvironment.addCollidables(mirrorCollidables);
 
-    // Add fourth wall
-    const wallColor = new THREE.Color(0x6cceff);
-    const wallNearMirror = createWall(
-      32,
-      35,
-      0.2,
-      20,
-      1.5,
-      6.5,
-      null,
-      "2nd level/Textures/20251015_2213_Blue Solar System Texture_simple_compose_01k7mr2ssafgj912vz5pqzw3kd.png"
-    );
-    this.currentEnvironment.getScene().add(wallNearMirror);
-    this.currentEnvironment.addCollidables([wallNearMirror]);
-
-    console.log("Level 2 (Bedroom) loaded");
+    return true;
   }
 
-async loadLevel3() {
-  // Clocktower Scene
-  this.currentEnvironment = new ClocktowerEnv();
-  this.playerController.environment = this.currentEnvironment;
+  // In LevelManager class - add this method
+  checkMKCollisions() {
+    if (!this.mkChaser || !this.mkChaser.model || !this.currentEnvironment)
+      return;
 
-  // Load player
-  const gltf = await this.currentEnvironment.loadPlayerModel();
-  this.playerController.setupAnimations(gltf);
+    const player = this.currentEnvironment.getPlayer();
+    if (!player) return;
 
-  // Reset camera
-  this.playerController.cameraDistance = 10;
+    const mkPos = this.mkChaser.model.position;
+    const playerPos = player.position;
+    const distance = mkPos.distanceTo(playerPos);
 
-  console.log("Level 3 (Clocktower) loaded");
-  
-  // Note: Soundtrack will be loaded by main.js after level loads
-}
+    // Only damage player if enemy is attacking and close enough
+    if (this.mkChaser.isAttacking && distance < 2.0) {
+      // Add your player damage logic here
+      console.log("MK attacks player! Distance:", distance);
+
+      // Example damage system - you'll need to implement this based on your player health system
+      if (player.takeDamage) {
+        player.takeDamage(1);
+      }
+
+      // Optional: Add visual/audio feedback
+      this.createDamageFeedback();
+    }
+  }
+
+  createDamageFeedback() {
+    // Add screen flash, sound, or other feedback when player takes damage
+    console.log("Player takes damage!");
+
+    // Example: Screen flash effect
+    document.body.style.backgroundColor = "red";
+    setTimeout(() => {
+      document.body.style.backgroundColor = "";
+    }, 100);
+  }
+
+  async loadLevel3() {
+    // Clocktower Scene
+    this.currentEnvironment = new ClocktowerEnv();
+    this.playerController.environment = this.currentEnvironment;
+
+    // Load player
+    const gltf = await this.currentEnvironment.loadPlayerModel();
+    this.playerController.setupAnimations(gltf);
+
+    // Reset camera
+    this.playerController.cameraDistance = 10;
+
+    console.log("Level 3 (Clocktower) loaded");
+
+    // Note: Soundtrack will be loaded by main.js after level loads
+  }
+
+  // Add this method to update blocks in the animation loop
+  update(delta, elapsedTime) {
+    if (
+      this.currentLevel === 2 &&
+      this.currentEnvironment &&
+      this.currentEnvironment.updateBlocks
+    ) {
+      this.currentEnvironment.updateBlocks(delta, elapsedTime);
+
+      // Update MK chaser if it exists
+      if (this.mkChaser) {
+        this.mkChaser.update(delta);
+      }
+
+      // Add collision detection for MK enemy
+      this.checkMKCollisions();
+
+      // Update quizzes (no-op for now, kept for future timers)
+      if (this.level2Quizzes && this.level2Quizzes.update) {
+        this.level2Quizzes.update(delta, elapsedTime);
+      }
+
+      // Update portal animation if present
+      if (this.level2Portal && this.level2Portal.update) {
+        this.level2Portal.update(delta);
+      }
+    }
+  }
 
   getCurrentEnvironment() {
     return this.currentEnvironment;
@@ -200,5 +675,10 @@ async loadLevel3() {
 
   getCurrentLevel() {
     return this.currentLevel;
+  }
+
+  // Helper method to get blocks for debugging
+  getBlocks() {
+    return this.level2Blocks;
   }
 }

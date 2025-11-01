@@ -1,13 +1,22 @@
 // main.js
-import * as THREE from 'three';
-import { LevelManager } from './js/levelManager.js';
-import { PlayerController3 } from './3rd level/playerController3.js';
-import { PlayerController } from './js/playerController.js';
-import { Environment as ClocktowerEnv } from './3rd level/clocktower.js';
+import * as THREE from "three";
+import { LevelManager } from "./js/levelManager.js";
+import { PlayerController3 } from "./3rd level/playerController3.js";
+import { PlayerController } from "./js/playerController.js";
+import { Environment as ClocktowerEnv } from "./3rd level/clocktower.js";
+import { Level2PlayerController } from "./2nd level/Level2PlayerController.js";
+import { createPauseMenu } from "./2nd level/pauseMenu.js";
 
 class Game {
   constructor() {
+    this.clock = new THREE.Clock();
+    this.camera = null;
+    this.renderer = null;
     this.currentPlayerController = null;
+    this.Level2PlayerController = null;
+    this.levelManager = null;
+    this.pauseMenu = null;
+    this.isPaused = false;
     this.init();
     this.setupUI();
     this.animate();
@@ -28,16 +37,50 @@ class Game {
     );
 
     // Start with regular player controller (will be swapped per level)
-    this.playerController = new PlayerController(null, this.camera, this.renderer);
+    this.currentPlayerController = new PlayerController(null, this.camera, this.renderer);
 
-    // Initialize level manager
-    this.levelManager = new LevelManager(this.renderer, this.camera, this.playerController);
+    // Create Level2PlayerController for Level 2
+    this.Level2PlayerController = new Level2PlayerController(
+      null,
+      this.camera,
+      this.renderer
+    );
 
-    // Clock for delta time
-    this.clock = new THREE.Clock();
+    // Initialize level manager - start with currentPlayerController
+    this.levelManager = new LevelManager(this.renderer, this.camera, this.currentPlayerController);
+
+    // Initialize pause menu (only active in Level 2)
+    this.pauseMenu = createPauseMenu({
+      isEnabled: () => this.levelManager?.getCurrentLevel?.() === 2
+    });
+    
+    // Handle pause state properly
+    if (this.pauseMenu) {
+      this.pauseMenu.onPause(() => {
+        this.isPaused = true;
+        this.clock.stop(); // Stop the clock to freeze delta time
+      });
+      
+      this.pauseMenu.onResume(() => {
+        this.isPaused = false;
+        this.clock.start(); // Restart the clock
+        // Reset the clock to avoid large delta values after pause
+        this.clock.getDelta();
+      });
+    }
 
     // Handle window resize
-    window.addEventListener('resize', () => this.onWindowResize());
+    window.addEventListener("resize", () => this.onWindowResize());
+
+    // Handle visibility change (tab switching)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.clock.stop();
+      } else {
+        this.clock.start();
+        this.clock.getDelta(); // Reset delta
+      }
+    });
   }
 
   setupUI() {
@@ -125,7 +168,11 @@ class Game {
       WASD - Move<br>
       Mouse Drag - Rotate Camera<br>
       Mouse Wheel - Zoom<br>
-      Space - Jump
+      Space - Jump<br>
+      C - Toggle First/Third Person (Level 2)<br>
+      O - Pause/Resume (Level 2)<br>
+      I - Interact/Quiz (Level 2)<br>
+      P - Push Blocks (Level 2)
     `;
     uiContainer.appendChild(controls);
 
@@ -232,19 +279,57 @@ class Game {
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    const delta = this.clock.getDelta();
     const environment = this.levelManager.getCurrentEnvironment();
 
     if (environment) {
-      // Update environment
-      environment.update(delta);
+      const quizActive = !!window.LEVEL2_QUIZ_ACTIVE;
+      // Get delta time - if paused or quiz active, use 0 to freeze animations
+      const delta = (this.isPaused || quizActive) ? 0 : this.clock.getDelta();
+      const elapsedTime = this.clock.getElapsedTime();
 
-      // Update the current player controller (switches based on level)
-      if (this.currentPlayerController) {
-        this.currentPlayerController.update(delta);
+      // Only update game logic if not paused and no quiz active
+      if (!this.isPaused && !quizActive) {
+        // Update level manager (this handles block updates)
+        if (this.levelManager.update) {
+          this.levelManager.update(delta, elapsedTime);
+        }
+
+        // Update environment
+        if (environment.update) {
+          environment.update(delta);
+        }
+
+        // Update the current player controller (switches based on level)
+        if (this.currentPlayerController) {
+          this.currentPlayerController.update(delta);
+        }
+
+        // Update Level 2 player controller if active
+        if (this.Level2PlayerController && this.levelManager.getCurrentLevel() === 2) {
+          this.Level2PlayerController.update(delta, elapsedTime);
+        }
+
+        // Update MKChaser (animations will use delta=0 when paused)
+        if (this.levelManager.mkChaser) {
+          this.levelManager.mkChaser.update();
+        }
+      } else {
+        // When paused, we still need to update animations with delta=0
+        // This keeps them in their current state without progressing
+        if (this.levelManager.mkChaser && this.levelManager.mkChaser.mixer) {
+          this.levelManager.mkChaser.mixer.update(0);
+        }
+        
+        // Also update player animations with delta=0 when paused
+        if (this.Level2PlayerController && this.Level2PlayerController.mixer) {
+          this.Level2PlayerController.mixer.update(0);
+        }
+        if (this.currentPlayerController && this.currentPlayerController.mixer) {
+          this.currentPlayerController.mixer.update(0);
+        }
       }
 
-      // Render scene
+      // Always render scene (even when paused)
       this.renderer.render(environment.getScene(), this.camera);
     }
   }
