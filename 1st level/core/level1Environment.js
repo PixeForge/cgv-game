@@ -21,7 +21,25 @@ export class Level1Environment {
   }
 
   init() {
-    this.scene.background = new THREE.Color(0x87ceeb)
+    const loader = new THREE.CubeTextureLoader()
+    loader.setPath('./1st level/skybox/cubemap/')
+    
+    const textureCube = loader.load(
+      [
+        'px.png', 'nx.png',
+        'py.png', 'ny.png',
+        'pz.png', 'nz.png'
+      ],
+      () => {
+        console.log('Skybox loaded successfully!')
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading skybox:', error)
+      }
+    )
+    
+    this.scene.background = textureCube
 
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2)
     hemiLight.position.set(0, 200, 0)
@@ -164,7 +182,6 @@ export class Level1Environment {
         if (gameState === "playing" && this.enemySystem.getBook()) {
           // Point to book during gameplay
           this.compass.setTarget(this.enemySystem.getBook())
-          
           this.compass.update()
         } else if (gameState === "won" && this.enemySystem.getPortal()) {
           // Point to portal after winning
