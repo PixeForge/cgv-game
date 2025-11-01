@@ -1,4 +1,3 @@
-// 2nd level/Level2PlayerController.js - Player Controller for Level 2
 import * as THREE from 'three';
 
 export class Level2PlayerController {
@@ -29,10 +28,10 @@ export class Level2PlayerController {
     this.PLAYER_HALF_WIDTH = 0.5;
     this.PLAYER_HEIGHT = 2.0;
 
-    this.isOnTopOfBlock = false;  // Add this
-     this.currentBlock = null;     // Add this
+    this.isOnTopOfBlock = false;
+    this.currentBlock = null;
 
-    this.mixer = null; // will be set when animations are initialized
+    this.mixer = null;
 
     this.init();
   }
@@ -51,15 +50,27 @@ export class Level2PlayerController {
 
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === canvas;
+
+      // ---- NEW: when pointer lock is lost, clear movement keys to avoid stale input ----
+      if (!this.pointerLocked) {
+        // clear movement keys so the player won't continue moving when pointer lock is lost
+        this.clearMovementKeys();
+      }
     });
 
     document.addEventListener('pointerlockerror', () => {
       this.pointerLocked = false;
+      this.clearMovementKeys();
     });
   }
 
+  // ---- NEW helper to clear movement-related keys ----
+  clearMovementKeys() {
+    const movementCodes = ['KeyW','KeyA','KeyS','KeyD','Space','ShiftLeft','ShiftRight'];
+    movementCodes.forEach((c) => (this.keys[c] = false));
+  }
+
   setupAnimations(gltf) {
-    // store mixer for later use
     this.mixer = this.environment.getMixer();
 
     gltf.animations.forEach((clip) => {
@@ -165,6 +176,7 @@ export class Level2PlayerController {
   }
 
   setupInputHandlers() {
+    // use arrow functions to ensure `this` is preserved
     document.addEventListener('keydown', (e) => {
       if (e.code) this.keys[e.code] = true;
 
@@ -182,6 +194,11 @@ export class Level2PlayerController {
           player.visible = !this.firstPerson;
         }
       }
+
+      // ---- NEW: pressing Escape should also clear movement keys to avoid stuck movement ----
+      if (e.code === 'Escape') {
+        this.clearMovementKeys();
+      }
     });
 
     document.addEventListener('keyup', (e) => {
@@ -192,9 +209,16 @@ export class Level2PlayerController {
       if (this.pointerLocked) {
         const dx = e.movementX || 0;
         const dy = e.movementY || 0;
+        // sanitize movement deltas
+        if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+
         this.cameraAngleX -= dx * 0.0025;
         this.cameraAngleY -= dy * 0.0025;
+        // clamp cameraAngleY safely
         this.cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2 - 0.01, this.cameraAngleY));
+
+        // ensure cameraAngleX stays finite
+        if (!Number.isFinite(this.cameraAngleX)) this.cameraAngleX = 0;
       }
     });
 
@@ -213,26 +237,24 @@ export class Level2PlayerController {
   triggerJump() {
     const player = this.environment.getPlayer();
     if (!player || !this.onGround || this.jumpCooldown) return;
-  
-    // Simple jump - no complex ceiling detection
+
     this.velocityY = 8;
     this.onGround = false;
     this.playOverlayAction('jumping', { fadeIn: 0.08, fadeOut: 0.12, stopAfter: 1.0 });
-  
+
     this.jumpCooldown = true;
     setTimeout(() => (this.jumpCooldown = false), 200);
   }
-  
+
   update(delta, elapsedTime = 0) {
     if (this.mixer) this.mixer.update(delta);
 
-    // Update environment moving parts (blocks) first so collisions use up-to-date positions
+    // keep environment moving parts updated if available (optional)
     // if (this.environment && typeof this.environment.updateBlocks === 'function') {
     //   try {
     //     this.environment.updateBlocks(delta, elapsedTime);
     //   } catch (e) {
-    //     // ignore errors from environment updateBlocks to avoid breaking player update loop
-    //     // console.warn('updateBlocks error', e);
+    //     // ignore environment errors to avoid breaking player loop
     //   }
     // }
 
@@ -240,30 +262,32 @@ export class Level2PlayerController {
     this.updateCamera();
   }
 
-  // Replace your entire updatePlayer method with this:
-
   updatePlayer(delta) {
     const player = this.environment.getPlayer();
     if (!player) return;
-  
+
+    // safety: ensure camera angles are finite
+    if (!Number.isFinite(this.cameraAngleX)) this.cameraAngleX = 0;
+    if (!Number.isFinite(this.cameraAngleY)) this.cameraAngleY = 0.5;
+
     const speed = 3;
     const move = new THREE.Vector3();
-  
+
     if (this.keys['KeyW']) move.z -= 1;
     if (this.keys['KeyS']) move.z += 1;
     if (this.keys['KeyA']) move.x -= 1;
     if (this.keys['KeyD']) move.x += 1;
-  
+
     const isMoving = move.lengthSq() > 0;
-    const collidables = this.environment.getCollidables();
-  
+    const collidables = this.environment.getCollidables ? (this.environment.getCollidables() || []) : [];
+
     // STEP 1: Build movement vector
     let movement = new THREE.Vector3();
     if (isMoving) {
       move.normalize();
       const forward = new THREE.Vector3(Math.sin(this.cameraAngleX), 0, Math.cos(this.cameraAngleX));
       const right = new THREE.Vector3(forward.z, 0, -forward.x);
-  
+
       if (this.firstPerson) {
         movement.addScaledVector(forward, -move.z);
         movement.addScaledVector(right, -move.x);
@@ -271,39 +295,52 @@ export class Level2PlayerController {
         movement.addScaledVector(forward, move.z);
         movement.addScaledVector(right, move.x);
       }
-  
+
       movement.setY(0);
-      movement.normalize().multiplyScalar(speed * delta);
+      if (!Number.isFinite(movement.x) || !Number.isFinite(movement.z)) {
+        movement.set(0, 0, 0); // sanitize
+      } else {
+        movement.normalize().multiplyScalar(speed * delta);
+      }
     }
-  
+
     // STEP 2: Apply gravity first
+    if (!Number.isFinite(this.velocityY)) this.velocityY = 0;
     this.velocityY -= 20 * delta;
     player.position.y += this.velocityY * delta;
-  
+
+    // safety: if player position becomes invalid bail out (prevents NaN spreading)
+    if (!Number.isFinite(player.position.x) || !Number.isFinite(player.position.y) || !Number.isFinite(player.position.z)) {
+      console.warn('Player position became non-finite; resetting to safe defaults.');
+      player.position.set(0, 1, 0);
+      this.velocityY = 0;
+      this.onGround = true;
+      return;
+    }
+
     // STEP 3: Ground detection - find what we're standing on
     let groundY = -Infinity;
     this.isOnTopOfBlock = false;
     this.currentBlock = null;
-  
+
     for (const obj of collidables) {
+      if (!obj) continue;
       if (obj.userData?.collidable === false) continue;
-  
+
       const objBox = new THREE.Box3().setFromObject(obj);
-      
-      // Check horizontal alignment
+
       const horizontallyAligned =
         player.position.x + this.PLAYER_HALF_WIDTH > objBox.min.x &&
         player.position.x - this.PLAYER_HALF_WIDTH < objBox.max.x &&
         player.position.z + this.PLAYER_HALF_WIDTH > objBox.min.z &&
         player.position.z - this.PLAYER_HALF_WIDTH < objBox.max.z;
-  
+
       if (!horizontallyAligned) continue;
-  
+
       const blockTop = objBox.max.y;
-      const playerBottom = player.position.y; // Player's bottom is at position.y
+      const playerBottom = player.position.y; // player's bottom is at position.y
       const distance = playerBottom - blockTop;
-  
-      // Check if we're standing on this object
+
       if (distance >= -0.5 && distance <= 0.1) {
         if (blockTop > groundY) {
           groundY = blockTop;
@@ -312,10 +349,10 @@ export class Level2PlayerController {
         }
       }
     }
-  
+
     // STEP 4: Apply ground positioning
     if (groundY > -Infinity && player.position.y <= groundY + 0.1) {
-      player.position.y = groundY + 0.02; // Small offset to prevent sinking
+      player.position.y = groundY + 0.02; // small offset to prevent sinking
       this.velocityY = 0;
       this.onGround = true;
     } else if (!this.isOnTopOfBlock && player.position.y <= 0.05) {
@@ -325,65 +362,71 @@ export class Level2PlayerController {
     } else {
       this.onGround = false;
     }
-  
-    // STEP 5: Horizontal movement with simplified collision detection
+
+    // STEP 5: Horizontal movement with collision detection
     if (movement.lengthSq() > 0) {
       const newPos = new THREE.Vector3(
         player.position.x + movement.x,
         player.position.y,
         player.position.z + movement.z
       );
-  
-      let canMove = true;
-      
-      // Check for collisions, but skip blocks we're standing on
-      for (const obj of collidables) {
-        if (obj.userData?.collidable === false) continue;
-        
-        // Skip the block we're currently standing on
-        if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
-  
-        const objBox = new THREE.Box3().setFromObject(obj);
-        const playerBox = new THREE.Box3(
-          new THREE.Vector3(
-            newPos.x - this.PLAYER_HALF_WIDTH,
-            newPos.y, // Player bottom at ground level
-            newPos.z - this.PLAYER_HALF_WIDTH
-          ),
-          new THREE.Vector3(
-            newPos.x + this.PLAYER_HALF_WIDTH,
-            newPos.y + this.PLAYER_HEIGHT, // Player top
-            newPos.z + this.PLAYER_HALF_WIDTH
-          )
-        );
-  
-        // Only check collision if we're not clearly above the object
-        const playerBottom = playerBox.min.y;
-        const objectTop = objBox.max.y;
-        
-        // If player is above the object, allow movement
-        if (playerBottom > objectTop + 0.1) {
-          continue;
+
+      // sanitize newPos
+      if (!Number.isFinite(newPos.x) || !Number.isFinite(newPos.y) || !Number.isFinite(newPos.z)) {
+        // abort move if bad values
+      } else {
+        let canMove = true;
+
+        for (const obj of collidables) {
+          if (!obj) continue;
+          if (obj.userData?.collidable === false) continue;
+
+          // Skip the block we're standing on (so we can be moved with it)
+          if (this.isOnTopOfBlock && obj === this.currentBlock) continue;
+
+          const objBox = new THREE.Box3().setFromObject(obj);
+          const playerBox = new THREE.Box3(
+            new THREE.Vector3(
+              newPos.x - this.PLAYER_HALF_WIDTH,
+              newPos.y,
+              newPos.z - this.PLAYER_HALF_WIDTH
+            ),
+            new THREE.Vector3(
+              newPos.x + this.PLAYER_HALF_WIDTH,
+              newPos.y + this.PLAYER_HEIGHT,
+              newPos.z + this.PLAYER_HALF_WIDTH
+            )
+          );
+
+          const playerBottom = playerBox.min.y;
+          const objectTop = objBox.max.y;
+
+          if (playerBottom > objectTop + 0.1) {
+            continue;
+          }
+
+          if (playerBox.intersectsBox(objBox)) {
+            canMove = false;
+            break;
+          }
         }
-  
-        if (playerBox.intersectsBox(objBox)) {
-          canMove = false;
-          break;
+
+        if (canMove) {
+          player.position.x = newPos.x;
+          player.position.z = newPos.z;
         }
-      }
-  
-      if (canMove) {
-        player.position.x = newPos.x;
-        player.position.z = newPos.z;
       }
     }
-  
+
     // STEP 6: Move with block if standing on a moving one
     if (this.isOnTopOfBlock && this.currentBlock && this.currentBlock.userData?.isMovingToyBlock) {
-      player.position.x += this.currentBlock.userData.velocity.x * delta;
-      player.position.z += this.currentBlock.userData.velocity.z * delta;
+      const v = this.currentBlock.userData.velocity || new THREE.Vector3();
+      if (Number.isFinite(v.x) && Number.isFinite(v.z)) {
+        player.position.x += v.x * delta;
+        player.position.z += v.z * delta;
+      }
     }
-  
+
     // STEP 7: Room bounds
     const roomBox = this.environment.getRoomBounds();
     if (roomBox) {
@@ -391,7 +434,7 @@ export class Level2PlayerController {
       player.position.x = Math.max(roomBox.min.x + margin, Math.min(roomBox.max.x - margin, player.position.x));
       player.position.z = Math.max(roomBox.min.z + margin, Math.min(roomBox.max.z - margin, player.position.z));
     }
-  
+
     // STEP 8: Animation state
     if (this.onGround) {
       if (isMoving) this.playBaseAction('running');
@@ -401,11 +444,13 @@ export class Level2PlayerController {
         this.playOverlayAction('jumping', { fadeIn: 0.08, fadeOut: 0.12 });
       }
     }
-  
+
     // STEP 9: Rotate to face movement
     if (isMoving && movement.lengthSq() > 0) {
       const dir = new THREE.Vector3(movement.x, 0, movement.z).normalize();
-      player.rotation.y = Math.atan2(dir.x, dir.z);
+      if (Number.isFinite(dir.x) && Number.isFinite(dir.z)) {
+        player.rotation.y = Math.atan2(dir.x, dir.z);
+      }
     }
   }
 
@@ -436,4 +481,3 @@ export class Level2PlayerController {
     }
   }
 }
-
