@@ -1,5 +1,6 @@
 
 import { QuizUISystem } from './public/quiz-ui.js';
+
 import { QUIZZES } from './public/quizzes.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -93,7 +94,13 @@ export class Environment {
     this.groundObject = null; // null = floor, or a platform mesh
     this.stepHeight = 0.7;    // max height we auto-step up
     this.playerRadius = 0.5;  // used for horizontal bounds checks
-
+    // Audio system
+this.audioContext = null;
+this.soundtrack = null;
+this.soundtrackSource = null;
+this.soundtrackGain = null;
+this.isSoundtrackLoaded = false;
+this.isSoundtrackPlaying = false;
     this.init();
     // Attempt to load cannon-es in the background for ragdoll support
     this.initPhysics().catch(() => {/* optional */});
@@ -104,7 +111,94 @@ export class Environment {
   setOnWrongAnswer(cb) { this.onWrongAnswer = cb; }
   setOnGameWon(cb) { this.onGameWon = cb; }
   setOnGameLost(cb) { this.onGameLost = cb; }
+ async initAudio() {
+    if (this.audioContext) return; // Already initialized
+    
+    try {
+      // Create audio context
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create gain node for volume control
+      this.soundtrackGain = this.audioContext.createGain();
+      this.soundtrackGain.gain.value = 0.3; // 30% volume
+      this.soundtrackGain.connect(this.audioContext.destination);
+      
+      console.log('Audio system initialized');
+    } catch (error) {
+      console.error('Failed to initialize audio:', error);
+    }
+  }
 
+  async loadSoundtrack(url = './public/clocktower_soundtrack.mp3') {
+    if (!this.audioContext) {
+      await this.initAudio();
+    }
+    
+    try {
+      console.log('Loading soundtrack...');
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      this.soundtrack = await this.audioContext.decodeAudioData(arrayBuffer);
+      this.isSoundtrackLoaded = true;
+      console.log('Soundtrack loaded successfully');
+      return true;
+    } catch (error) {
+      console.error('Failed to load soundtrack:', error);
+      return false;
+    }
+  }
+
+  playSoundtrack() {
+    if (!this.isSoundtrackLoaded || !this.soundtrack) {
+      console.warn('Soundtrack not loaded yet');
+      return;
+    }
+    
+    // Stop any existing playback
+    this.stopSoundtrack();
+    
+    // Create new source
+    this.soundtrackSource = this.audioContext.createBufferSource();
+    this.soundtrackSource.buffer = this.soundtrack;
+    this.soundtrackSource.loop = true; // This makes it loop automatically!
+    this.soundtrackSource.connect(this.soundtrackGain);
+    
+    // Start playing
+    this.soundtrackSource.start(0);
+    this.isSoundtrackPlaying = true;
+    console.log('Soundtrack playing (looping enabled)');
+  }
+
+  stopSoundtrack() {
+    if (this.soundtrackSource) {
+      try {
+        this.soundtrackSource.stop();
+      } catch (e) {
+        // Already stopped
+      }
+      this.soundtrackSource = null;
+      this.isSoundtrackPlaying = false;
+    }
+  }
+
+  pauseSoundtrack() {
+    if (this.audioContext && this.audioContext.state === 'running') {
+      this.audioContext.suspend();
+    }
+  }
+
+  resumeSoundtrack() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+  }
+
+  setSoundtrackVolume(volume) {
+    if (this.soundtrackGain) {
+      // Clamp volume between 0 and 1
+      this.soundtrackGain.gain.value = Math.max(0, Math.min(1, volume));
+    }
+  }
   // Utility: sample n unique quizzes from a larger directory
   sampleQuizzes(source, n) {
     const arr = Array.isArray(source) ? source.slice() : [];
