@@ -8,6 +8,8 @@ import { PlayerController3 } from './3rd level/playerController3.js';
 class Game {
   constructor() {
     this.currentPlayerController = null;
+    this.currentEnvironment = null;
+    this.currentLevel = null;
     this.init();
     this.setupUI();
     this.animate();
@@ -29,10 +31,6 @@ class Game {
 
     // Clock for delta time
     this.clock = new THREE.Clock();
-
-    // Current level state
-    this.currentEnvironment = null;
-    this.currentLevel = null;
 
     // Handle window resize
     window.addEventListener('resize', () => this.onWindowResize());
@@ -81,6 +79,11 @@ class Game {
         const enemySystem = this.currentEnvironment.getEnemySystem();
         if (enemySystem) enemySystem.dispose();
       }
+
+      // Stop background music
+      if (this.currentEnvironment.stopBackgroundMusic) {
+        this.currentEnvironment.stopBackgroundMusic();
+      }
     }
 
     // Remove old event listeners by recreating player controller
@@ -101,6 +104,9 @@ class Game {
 
       this.currentLevel = levelNumber;
       console.log(`Level ${levelNumber} loaded successfully!`);
+      
+      // Show pause button after level loads
+      this.showPauseButton();
     } catch (error) {
       console.error(`Error loading level ${levelNumber}:`, error);
     }
@@ -115,6 +121,14 @@ class Game {
       this.renderer
     );
 
+    // Set camera reference for compass and audio
+    if (this.currentEnvironment.setCamera) {
+      this.currentEnvironment.setCamera(this.camera);
+    }
+    if (this.currentEnvironment.setAudioListener) {
+      this.currentEnvironment.setAudioListener(this.camera);
+    }
+
     try {
       await this.currentEnvironment.loadTerrainModel("./models/level_1.glb", 0.02);
       console.log("Level 1 terrain loaded");
@@ -124,12 +138,13 @@ class Game {
 
     // Load background music
     try {
-      await this.currentEnvironment.loadBackgroundMusic('../1st level/sounds/nature.wav')
-      this.currentEnvironment.playBackgroundMusic()
+      if (this.currentEnvironment.loadBackgroundMusic) {
+        await this.currentEnvironment.loadBackgroundMusic('../1st level/sounds/nature.wav');
+        this.currentEnvironment.playBackgroundMusic();
+      }
     } catch (error) {
-      console.warn("Background music not found, continuing without music:", error)
+      console.warn("Background music not found, continuing without music:", error);
     }
-
 
     // Load player model
     const gltf = await this.currentEnvironment.loadPlayerModel();
@@ -229,6 +244,109 @@ class Game {
     uiContainer.appendChild(controls);
 
     document.body.appendChild(uiContainer);
+  }
+
+  showPauseButton() {
+    // Remove existing pause button if any
+    const existingPause = document.getElementById("pause-ui");
+    if (existingPause) {
+      existingPause.remove();
+    }
+
+    // Create pause button container
+    const pauseContainer = document.createElement("div");
+    pauseContainer.id = "pause-ui";
+    pauseContainer.style.position = "absolute";
+    pauseContainer.style.top = "20px";
+    pauseContainer.style.right = "20px";
+    pauseContainer.style.zIndex = "1000";
+
+    // Pause button
+    const pauseButton = document.createElement("button");
+    pauseButton.textContent = "⏸ Pause";
+    pauseButton.style.padding = "10px 20px";
+    pauseButton.style.cursor = "pointer";
+    pauseButton.style.border = "none";
+    pauseButton.style.borderRadius = "5px";
+    pauseButton.style.backgroundColor = "#FF9800";
+    pauseButton.style.color = "white";
+    pauseButton.style.fontSize = "14px";
+    pauseButton.style.fontWeight = "bold";
+
+    let isPaused = false;
+    pauseButton.addEventListener("click", () => {
+      isPaused = !isPaused;
+      
+      if (isPaused) {
+        pauseButton.textContent = "▶ Resume";
+        pauseButton.style.backgroundColor = "#4CAF50";
+        this.clock.stop();
+        
+        // Pause music/soundtrack
+        if (this.currentEnvironment) {
+          if (this.currentEnvironment.pauseBackgroundMusic) {
+            this.currentEnvironment.pauseBackgroundMusic();
+          }
+          if (this.currentEnvironment.pauseSoundtrack) {
+            this.currentEnvironment.pauseSoundtrack();
+          }
+        }
+      } else {
+        pauseButton.textContent = "⏸ Pause";
+        pauseButton.style.backgroundColor = "#FF9800";
+        this.clock.start();
+        
+        // Resume music/soundtrack
+        if (this.currentEnvironment) {
+          if (this.currentEnvironment.resumeBackgroundMusic) {
+            this.currentEnvironment.resumeBackgroundMusic();
+          }
+          if (this.currentEnvironment.resumeSoundtrack) {
+            this.currentEnvironment.resumeSoundtrack();
+          }
+        }
+      }
+    });
+
+    pauseContainer.appendChild(pauseButton);
+
+    // Level selector button
+    const levelButton = document.createElement("button");
+    levelButton.textContent = "📋 Change Level";
+    levelButton.style.padding = "10px 20px";
+    levelButton.style.cursor = "pointer";
+    levelButton.style.border = "none";
+    levelButton.style.borderRadius = "5px";
+    levelButton.style.backgroundColor = "#2196F3";
+    levelButton.style.color = "white";
+    levelButton.style.fontSize = "14px";
+    levelButton.style.fontWeight = "bold";
+    levelButton.style.marginLeft = "10px";
+
+    levelButton.addEventListener("click", () => {
+      // Stop music/soundtrack
+      if (this.currentEnvironment) {
+        if (this.currentEnvironment.stopBackgroundMusic) {
+          this.currentEnvironment.stopBackgroundMusic();
+        }
+        if (this.currentEnvironment.stopSoundtrack) {
+          this.currentEnvironment.stopSoundtrack();
+        }
+      }
+      
+      // Show level selection UI
+      const levelUI = document.getElementById("level-ui");
+      if (levelUI) {
+        levelUI.style.display = "block";
+      }
+      
+      // Hide pause UI
+      pauseContainer.style.display = "none";
+    });
+
+    pauseContainer.appendChild(levelButton);
+
+    document.body.appendChild(pauseContainer);
   }
 
   onWindowResize() {
